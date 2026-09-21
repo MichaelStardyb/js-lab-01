@@ -1,0 +1,1 @@
+export const gameBus = new EventTarget();

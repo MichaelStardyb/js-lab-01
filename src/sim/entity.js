@@ -1,4 +1,5 @@
 import { Vector2 } from './vector.js';
+import { gameBus } from '../events.js';
 
 export class Entity {
     static nextId = 1;
@@ -54,6 +55,7 @@ export class Ship extends Entity {
             const bulletPos = this.pos.add(dir.scale(20));
             const bulletVel = this.vel.add(dir.scale(400));
             world.spawn(new Bullet(bulletPos, bulletVel));
+            gameBus.dispatchEvent(new CustomEvent('fired'));
             this.fireCooldown = 0.2;
         }
     }
