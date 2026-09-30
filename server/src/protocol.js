@@ -1,3 +1,5 @@
+import { decodeInput } from 'shared/protocol/binaryCodec';
+
 const roomPattern = /^[\p{L}\p{N}_-]{1,32}$/u;
 const forbiddenControlCharacters = /[\u0000-\u001f\u007f]/u;
 
@@ -6,10 +8,16 @@ export function validateRoomId(value) {
 }
 
 export function validateClientMessage(data, maxPayloadBytes, isBinary = false) {
-  if (isBinary) return { error: 'Only text messages are supported', closeCode: 1003 };
-
   const raw = Buffer.isBuffer(data) ? data : Buffer.from(data);
   if (raw.byteLength > maxPayloadBytes) return { error: 'Message is too large', closeCode: 1009 };
+
+  if (isBinary) {
+    try {
+      return { value: decodeInput(raw) };
+    } catch (error) {
+      return { error: error.message, closeCode: 1003 };
+    }
+  }
 
   let message;
   try {
@@ -21,10 +29,9 @@ export function validateClientMessage(data, maxPayloadBytes, isBinary = false) {
   if (!message || typeof message !== 'object' || Array.isArray(message)) {
     return { error: 'Message must be a JSON object', closeCode: 1003 };
   }
-  if (message.v !== 0) return { error: 'Unsupported protocol version', closeCode: 1008 };
-
   switch (message.type) {
     case 'join': {
+      if (message.v !== 0) return { error: 'Unsupported protocol version', closeCode: 1008 };
       if (Object.keys(message).some((key) => !['v', 'type', 'room', 'name'].includes(key))) {
         return { error: 'Unexpected join fields', closeCode: 1008 };
       }
@@ -37,6 +44,7 @@ export function validateClientMessage(data, maxPayloadBytes, isBinary = false) {
       return { value: { type: 'join', room, name } };
     }
     case 'chat': {
+      if (message.v !== 0) return { error: 'Unsupported protocol version', closeCode: 1008 };
       if (Object.keys(message).some((key) => !['v', 'type', 'text'].includes(key))) {
         return { error: 'Unexpected chat fields', closeCode: 1008 };
       }
@@ -47,9 +55,26 @@ export function validateClientMessage(data, maxPayloadBytes, isBinary = false) {
       return { value: { type: 'chat', text } };
     }
     case 'leave':
-      return Object.keys(message).length === 2
+      return message.v === 0 && Object.keys(message).length === 2
         ? { value: { type: 'leave' } }
         : { error: 'Unexpected leave fields', closeCode: 1008 };
+    case 'input': {
+      if (message.v !== 1) return { error: 'Unsupported input protocol version', closeCode: 1008 };
+      if (Object.keys(message).some((key) => !['v', 'type', 'seq', 'thrust', 'turnLeft', 'turnRight', 'fire'].includes(key))) {
+        return { error: 'Unexpected input fields', closeCode: 1008 };
+      }
+      if (!Number.isInteger(message.seq) || message.seq < 0 || message.seq > 0xFFFFFFFF
+        || ['thrust', 'turnLeft', 'turnRight', 'fire'].some((field) => typeof message[field] !== 'boolean')) {
+        return { error: 'Input sequence or flags are invalid', closeCode: 1008 };
+      }
+      return { value: { type: 'input', seq: message.seq, thrust: message.thrust, turnLeft: message.turnLeft, turnRight: message.turnRight, fire: message.fire } };
+    }
+    case 'ping':
+      return message.v === 1
+        && Object.keys(message).every((key) => ['v', 'type', 'time'].includes(key))
+        && Number.isFinite(message.time)
+        ? { value: { type: 'ping', time: message.time } }
+        : { error: 'Invalid ping packet', closeCode: 1008 };
     default:
       return { error: 'Unknown message type', closeCode: 1003 };
   }

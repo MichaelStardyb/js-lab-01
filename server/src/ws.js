@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { WebSocket, WebSocketServer } from 'ws';
+import { RoomGame } from './game.js';
+import { parseNetworkSettings } from './latency.js';
 import { TokenBucket, validateClientMessage } from './protocol.js';
 
 function playerRoster(room) {
@@ -25,7 +27,8 @@ export function attachWebSocketServer(httpServer, { config, roomManager }) {
       return false;
     }
     try {
-      socket.send(JSON.stringify(value), (error) => {
+      const isBinary = value instanceof ArrayBuffer || ArrayBuffer.isView(value);
+      socket.send(isBinary ? value : JSON.stringify(value), { binary: isBinary }, (error) => {
         if (error) console.warn('WebSocket send failed:', error.message);
       });
       return true;
@@ -39,10 +42,22 @@ export function attachWebSocketServer(httpServer, { config, roomManager }) {
     for (const socket of room.players.keys()) send(socket, value, options);
   }
 
+  function sendGamePacket(socket, value, options) {
+    if (options?.simulated && socket.injector) {
+      socket.injector.dispatch(() => send(socket, value, options), socket.latencyTimers);
+      return true;
+    }
+    return send(socket, value, options);
+  }
+
   function removeFromRoom(socket) {
     const room = socket.room;
     if (!room) return;
     socket.room = null;
+    room.gameSession?.removePlayer(socket);
+    if (room.players.size === 1) {
+      room.gameSession = null;
+    }
     room.remove(socket);
     broadcast(room, playerRoster(room));
   }
@@ -76,8 +91,11 @@ export function attachWebSocketServer(httpServer, { config, roomManager }) {
     socket.player = player;
     clearTimeout(socket.joinTimer);
     room.add(socket, player);
+    room.gameSession ??= new RoomGame({ send: sendGamePacket });
+    const entityId = room.gameSession.addPlayer(socket, player);
     if (room.log.backpressured) socket.pause();
-    send(socket, { v: 0, type: 'joined', room: room.id, player, players: room.roster() });
+    socket.codec ??= 'json';
+    send(socket, { v: 0, type: 'joined', room: room.id, player, entityId, players: room.roster() });
     broadcast(room, playerRoster(room));
   }
 
@@ -88,10 +106,29 @@ export function attachWebSocketServer(httpServer, { config, roomManager }) {
     socket.player = null;
     socket.joining = false;
     socket.bucket = new TokenBucket(config.rateLimitPerSec);
+    socket.inputBucket = new TokenBucket(config.inputRateLimitPerSec ?? 90);
+    socket.latencyTimers = new Set();
     socket.on('error', (error) => console.warn('WebSocket client error:', error.message));
     socket.on('pong', () => {
       socket.missedPongs = 0;
     });
+    socket.on('close', () => {
+      clearTimeout(socket.joinTimer);
+      for (const timer of socket.latencyTimers) clearTimeout(timer);
+      socket.latencyTimers.clear();
+      clients.delete(socket);
+      removeFromRoom(socket);
+    });
+    try {
+      const requestUrl = new URL(socket.upgradeReq?.url ?? '/', `http://${socket.upgradeReq?.headers?.host ?? 'localhost'}`);
+      const settings = parseNetworkSettings(requestUrl.searchParams);
+      socket.codec = settings.codec;
+      socket.injector = settings.injector;
+    } catch (error) {
+      send(socket, { v: 0, type: 'error', message: error.message });
+      socket.close(1008, 'Invalid network settings');
+      return;
+    }
     socket.joinTimer = setTimeout(() => {
       if (!socket.room && socket.readyState === WebSocket.OPEN) {
         send(socket, { v: 0, type: 'error', message: 'Join timed out' });
@@ -101,9 +138,9 @@ export function attachWebSocketServer(httpServer, { config, roomManager }) {
     socket.joinTimer.unref?.();
 
     socket.on('message', (data, isBinary) => {
-      if (!socket.bucket.take()) {
-        send(socket, { v: 0, type: 'error', message: 'Rate limit exceeded' });
-        socket.close(1008, 'Rate limit exceeded');
+      if (isBinary && socket.codec !== 'binary') {
+        send(socket, { v: 0, type: 'error', message: 'Binary codec was not negotiated' });
+        socket.close(1003, 'Binary codec was not negotiated');
         return;
       }
       const result = validateClientMessage(data, config.maxPayloadBytes, isBinary);
@@ -112,8 +149,13 @@ export function attachWebSocketServer(httpServer, { config, roomManager }) {
         socket.close(result.closeCode ?? 1008, result.error.slice(0, 120));
         return;
       }
-
       const message = result.value;
+      const bucket = message.type === 'input' ? socket.inputBucket : socket.bucket;
+      if (!bucket.take()) {
+        send(socket, { v: 0, type: 'error', message: 'Rate limit exceeded' });
+        socket.close(1008, 'Rate limit exceeded');
+        return;
+      }
       if (message.type === 'join') {
         if (socket.room || socket.joining) {
           send(socket, { v: 0, type: 'error', message: 'Already joined a room' });
@@ -138,6 +180,18 @@ export function attachWebSocketServer(httpServer, { config, roomManager }) {
       }
 
       const room = socket.room;
+      if (message.type === 'ping') {
+        socket.injector.dispatch(
+          () => send(socket, { v: 1, type: 'pong', time: message.time }),
+          socket.latencyTimers,
+        );
+        return;
+      }
+      if (message.type === 'input') {
+        if (!room) return;
+        socket.injector.dispatch(() => room.gameSession?.receiveInput(socket, message), socket.latencyTimers);
+        return;
+      }
       if (!room) {
         send(socket, { v: 0, type: 'error', message: 'Join a room before chatting' });
         return;
@@ -153,11 +207,6 @@ export function attachWebSocketServer(httpServer, { config, roomManager }) {
       }, { dropWhenBuffered: true });
     });
 
-    socket.on('close', () => {
-      clearTimeout(socket.joinTimer);
-      clients.delete(socket);
-      removeFromRoom(socket);
-    });
   }
 
   webSocketServer.on('connection', onConnection);
@@ -174,6 +223,7 @@ export function attachWebSocketServer(httpServer, { config, roomManager }) {
       return;
     }
     webSocketServer.handleUpgrade(request, socket, head, (webSocket) => {
+      webSocket.upgradeReq = request;
       webSocketServer.emit('connection', webSocket, request);
     });
   });

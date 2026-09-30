@@ -5,12 +5,16 @@
   "type": "module",
   "workspaces": [
     "client",
-    "server"
+    "server",
+    "shared"
   ],
   "scripts": {
     "dev:client": "npm --workspace=client run dev",
     "dev:server": "npm --workspace=server run dev",
     "start": "npm --workspace=server run start",
-    "build": "npm --workspace=client run build"
+    "build": "npm --workspace=client run build",
+    "test": "node --test",
+    "lint": "node server/scripts/check-syntax.js",
+    "bench:netcode": "node server/scripts/bench-netcode.js"
   }
 }

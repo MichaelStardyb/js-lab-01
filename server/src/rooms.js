@@ -97,6 +97,7 @@ export class RoomManager {
   async close() {
     const pending = [...this.closingLogs.values()];
     for (const room of this.rooms.values()) {
+      room.gameSession?.close();
       room.removeAllListeners('event');
       pending.push(room.log.close());
     }

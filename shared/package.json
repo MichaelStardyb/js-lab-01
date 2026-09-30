@@ -1,0 +1,12 @@
+{
+  "name": "shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./sim/ship": "./sim/ship.js",
+    "./sim/arena": "./sim/arena.js",
+    "./sim/prng": "./sim/prng.js",
+    "./protocol/binaryCodec": "./protocol/binaryCodec.js"
+  }
+}

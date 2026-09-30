@@ -13,6 +13,7 @@ const defaults = Object.freeze({
   MAX_PLAYERS_PER_ROOM: 8,
   MAX_PAYLOAD_BYTES: 4096,
   RATE_LIMIT_PER_SEC: 15,
+  INPUT_RATE_LIMIT_PER_SEC: 90,
   MAX_BUFFERED_AMOUNT: 65536,
   JOIN_TIMEOUT_MS: 5000,
   HEARTBEAT_INTERVAL_MS: 15000,
@@ -57,6 +58,9 @@ export function loadConfig(env = process.env) {
     rateLimitPerSec: env.RATE_LIMIT_PER_SEC === undefined
       ? defaults.RATE_LIMIT_PER_SEC
       : positiveInteger('RATE_LIMIT_PER_SEC', env.RATE_LIMIT_PER_SEC, 1, 10000),
+    inputRateLimitPerSec: env.INPUT_RATE_LIMIT_PER_SEC === undefined
+      ? defaults.INPUT_RATE_LIMIT_PER_SEC
+      : positiveInteger('INPUT_RATE_LIMIT_PER_SEC', env.INPUT_RATE_LIMIT_PER_SEC, 30, 10000),
     maxBufferedAmount: env.MAX_BUFFERED_AMOUNT === undefined
       ? defaults.MAX_BUFFERED_AMOUNT
       : positiveInteger('MAX_BUFFERED_AMOUNT', env.MAX_BUFFERED_AMOUNT, 1024, 1024 * 1024 * 1024),

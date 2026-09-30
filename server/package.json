@@ -9,6 +9,7 @@
     "bench:rss": "node --env-file-if-exists=../.env scripts/bench-rss.js"
   },
   "dependencies": {
+    "shared": "*",
     "ws": "^8.18.3"
   }
 }
