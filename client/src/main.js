@@ -3,14 +3,15 @@ import { createInput } from './input.js';
 import { World } from './sim/world.js';
 import { Ship, Asteroid, Pickup, Explosion } from './sim/entity.js';
 import { Vector2 } from './sim/vector.js';
-import { loadAll, fetchJson } from './assets/loader.js';
 import { gameBus } from './events.js';
+import { RoomConnection } from './connection.js';
+import { createLobby } from './lobby.js';
+import './style.css';
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const dpr = window.devicePixelRatio || 1;
 canvas.width = 800 * dpr; canvas.height = 600 * dpr;
-canvas.style.width = '800px'; canvas.style.height = '600px';
 ctx.scale(dpr, dpr);
 
 const input = createInput(window);
@@ -20,46 +21,65 @@ let ship = new Ship(new Vector2(400, 300));
 // Слухаємо події пострілів (незалежний модуль)[cite: 17]
 gameBus.addEventListener('fired', () => console.log('Піу-піу!'));
 
-async function startApp() {
-    // 1. Екран завантаження[cite: 17]
-    ctx.fillStyle = 'black'; ctx.fillRect(0, 0, 800, 600);
-    ctx.fillStyle = 'white'; ctx.font = '20px Arial';
-    ctx.fillText('Завантаження ассетів...', 300, 300);
-
-    const manifest = ['sprite1.png', 'sprite2.png', 'audio1.mp3'];
-    await loadAll(manifest, (progress) => {
-        ctx.fillStyle = 'black'; ctx.fillRect(0, 0, 800, 600);
-        ctx.fillStyle = 'white'; ctx.font = '20px Arial';
-        ctx.fillText(`Завантаження: ${Math.round(progress * 100)}%`, 300, 300);
-    });
-
-    // 2. Лобі по HTTP[cite: 17]
-    ctx.fillStyle = 'black'; ctx.fillRect(0, 0, 800, 600);
-    ctx.fillStyle = 'lime';
-    ctx.fillText('Отримання списку кімнат...', 300, 300);
-
-    const controller = new AbortController();
-    try {
-        const rooms = await fetchJson('/api/rooms.json', { signal: controller.signal });
-        
-        ctx.fillStyle = 'black'; ctx.fillRect(0, 0, 800, 600);
-        ctx.fillStyle = 'lime';
-        ctx.fillText('Доступні кімнати (Натисни 1 або 2 щоб вибрати):', 150, 200);
-        rooms.forEach((room, i) => {
-            ctx.fillText(`[${i + 1}] ${room.name} (Гравців: ${room.players})`, 200, 240 + i * 30);
+let connection;
+let activeRoom;
+let playerName;
+let gameStarted = false;
+const lobby = createLobby({
+    onJoin: ({ room, name }) => {
+        activeRoom = room;
+        playerName = name;
+        lobby.setRoster([]);
+        lobby.setJoined(true);
+        lobby.setStatus('Підключення до кімнати...');
+        connection?.close();
+        const roomConnection = new RoomConnection();
+        connection = roomConnection;
+        roomConnection.addEventListener('open', () => {
+            if (connection !== roomConnection) return;
+            roomConnection.send({ type: 'join', room: activeRoom, name: playerName });
+            lobby.setStatus(`Підключено до ${activeRoom}`);
         });
-
-        // Чекаємо вибору кімнати для старту[cite: 17]
-        window.addEventListener('keydown', function startGame(e) {
-            if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Numpad1' || e.code === 'Numpad2') {
-                window.removeEventListener('keydown', startGame);
-                runGame();
+        roomConnection.addEventListener('close', () => {
+            if (connection === roomConnection && activeRoom) {
+                lobby.setStatus('З’єднання втрачено. Спроба перепідключення...');
             }
         });
-    } catch (e) {
-        ctx.fillText('Помилка завантаження лобі', 300, 350);
-    }
-}
+        roomConnection.addEventListener('error', (event) => {
+            if (connection === roomConnection) lobby.setStatus(event.detail.message);
+        });
+        roomConnection.addEventListener('message', ({ detail }) => {
+            if (connection !== roomConnection) return;
+            if (detail.type === 'roster' || detail.type === 'joined') {
+                lobby.setRoster(detail.players ?? detail.roster ?? []);
+                if (detail.type === 'joined') lobby.setStatus(`У кімнаті ${activeRoom}`);
+                lobby.refreshRooms();
+            } else if (detail.type === 'chat') {
+                lobby.addMessage(detail.name ?? detail.from ?? 'Гравець', detail.text ?? '');
+            } else if (detail.type === 'event' && detail.event?.type === 'chat') {
+                lobby.addMessage(detail.event.name ?? 'Гравець', detail.event.text ?? '');
+            } else if (detail.type === 'error') {
+                lobby.setJoined(false);
+                lobby.setStatus(detail.message ?? 'Помилка протоколу');
+            }
+        });
+        if (!gameStarted) {
+            gameStarted = true;
+            runGame();
+        }
+    },
+    onLeave: () => {
+        connection?.send({ type: 'leave' });
+        connection?.close();
+        connection = undefined;
+        activeRoom = undefined;
+        lobby.setJoined(false);
+        lobby.setRoster([]);
+        lobby.setStatus('Ви вийшли з кімнати');
+        lobby.refreshRooms();
+    },
+    onChat: (text) => connection?.send({ type: 'chat', text }),
+});
 
 function runGame() {
     world.spawn(ship);
@@ -113,5 +133,3 @@ function runGame() {
     }});
     loop.start();
 }
-
-startApp();

@@ -1,0 +1,14 @@
+{
+  "name": "dogfight-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../.env src/index.js",
+    "start": "node --env-file-if-exists=../.env src/index.js",
+    "bench:rss": "node --env-file-if-exists=../.env scripts/bench-rss.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}
