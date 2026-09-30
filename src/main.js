@@ -17,8 +17,32 @@ const input = createInput(window);
 const world = new World();
 let ship = new Ship(new Vector2(400, 300));
 
-// Слухаємо події пострілів (незалежний модуль)[cite: 17]
-gameBus.addEventListener('fired', () => console.log('Піу-піу!'));
+let audioContext;
+
+function playShotSound() {
+    const AudioContextClass = window.AudioContext;
+    if (!AudioContextClass) return;
+
+    audioContext ??= new AudioContextClass();
+    if (audioContext.state === 'suspended') void audioContext.resume();
+
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    const now = audioContext.currentTime;
+
+    oscillator.type = 'sawtooth';
+    oscillator.frequency.setValueAtTime(880, now);
+    oscillator.frequency.exponentialRampToValueAtTime(180, now + 0.12);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.15, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.13);
+}
+
+gameBus.addEventListener('fired', playShotSound);
 
 async function startApp() {
     // 1. Екран завантаження[cite: 17]
