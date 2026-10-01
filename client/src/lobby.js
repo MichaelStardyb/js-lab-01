@@ -9,6 +9,25 @@ export function createLobby({ onJoin, onLeave, onChat }) {
       <button type="button" id="leave" disabled>Вийти</button>
     </form>
     <p id="connection-status" role="status">Не підключено</p>
+    <fieldset class="net-controls">
+      <legend>Мережа (Lab 5)</legend>
+      <div class="net-buttons">
+        <button type="button" id="btn-prediction" class="btn-toggle active" title="Клавіша P">Передбачення: УВІМК (P)</button>
+        <button type="button" id="btn-noise" class="btn-toggle" title="Клавіша N">Шум: ВИМК (N)</button>
+      </div>
+      <div class="interp-row">
+        <span>Інтерполяція:</span>
+        <button type="button" id="btn-interp-dec" title="Клавіша [">-10</button>
+        <strong id="interp-val">100 мс</strong>
+        <button type="button" id="btn-interp-inc" title="Клавіша ]">+10</button>
+      </div>
+      <div class="net-presets">
+        <a href="?codec=binary&delay=100&jitter=15&drop=0.02" class="preset-link">DataView</a>
+        <a href="?codec=json&delay=100&jitter=15&drop=0.02" class="preset-link">JSON</a>
+        <a href="?codec=binary&delay=100&dumb=1" class="preset-link">Dumb</a>
+        <a href="?codec=binary&delay=100&nondeterministic=1" class="preset-link">Шум</a>
+      </div>
+    </fieldset>
     <div class="lobby-columns">
       <section><h2>Активні кімнати</h2><ul id="rooms"></ul></section>
       <section><h2>Гравці</h2><ul id="roster"></ul></section>
@@ -90,7 +109,32 @@ export function createLobby({ onJoin, onLeave, onChat }) {
     leaveButton.disabled = !joined;
   }
 
+  const btnPrediction = root.querySelector('#btn-prediction');
+  const btnNoise = root.querySelector('#btn-noise');
+  const btnInterpDec = root.querySelector('#btn-interp-dec');
+  const btnInterpInc = root.querySelector('#btn-interp-inc');
+  const interpVal = root.querySelector('#interp-val');
+
+  btnPrediction?.addEventListener('click', () => onTogglePrediction?.());
+  btnNoise?.addEventListener('click', () => onToggleNoise?.());
+  btnInterpDec?.addEventListener('click', () => onChangeInterp?.(-10));
+  btnInterpInc?.addEventListener('click', () => onChangeInterp?.(+10));
+
+  function updateControls({ dumbClient, nondeterministicExperiment, interpolationDelay }) {
+    if (btnPrediction) {
+      btnPrediction.textContent = dumbClient ? 'Передбачення: ВИМК (P)' : 'Передбачення: УВІМК (P)';
+      btnPrediction.classList.toggle('active', !dumbClient);
+    }
+    if (btnNoise) {
+      btnNoise.textContent = nondeterministicExperiment ? 'Шум: УВІМК (N)' : 'Шум: ВИМК (N)';
+      btnNoise.classList.toggle('active', Boolean(nondeterministicExperiment));
+    }
+    if (interpVal) {
+      interpVal.textContent = `${interpolationDelay} мс`;
+    }
+  }
+
   refreshRooms();
   setInterval(() => void refreshRooms(), 5000);
-  return { setStatus, setRoster, addMessage, setJoined, refreshRooms };
+  return { setStatus, setRoster, addMessage, setJoined, refreshRooms, updateControls };
 }

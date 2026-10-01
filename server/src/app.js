@@ -142,6 +142,55 @@ function createHttpHandler({ config, roomManager, staticDir }) {
       return;
     }
 
+    if (url.pathname === '/api/stats') {
+      if (request.method !== 'GET') {
+        response.setHeader('allow', 'GET');
+        respondJson(response, 405, { error: 'Method not allowed' });
+        return;
+      }
+      let totalTicks = 0;
+      let maxDuration = 0;
+      let maxJitter = 0;
+      let totalAvgDuration = 0;
+      let totalAvgJitter = 0;
+      let activeSessions = 0;
+      let totalPlayers = 0;
+
+      for (const room of roomManager.rooms.values()) {
+        totalPlayers += room.players.size;
+        const session = room.gameSession;
+        if (session) {
+          activeSessions += 1;
+          const s = session.getStats();
+          totalTicks += s.ticks;
+          maxDuration = Math.max(maxDuration, s.durationMs.max);
+          maxJitter = Math.max(maxJitter, s.jitterMs.max);
+          totalAvgDuration += s.durationMs.avg;
+          totalAvgJitter += s.jitterMs.avg;
+        }
+      }
+
+      respondJson(response, 200, {
+        tickRate: 30,
+        stepMs: 1000 / 30,
+        rooms: roomManager.rooms.size,
+        activeSessions,
+        players: totalPlayers,
+        ticks: totalTicks,
+        durationMs: {
+          avg: activeSessions > 0 ? Number((totalAvgDuration / activeSessions).toFixed(3)) : 0,
+          max: Number(maxDuration.toFixed(3)),
+        },
+        jitterMs: {
+          avg: activeSessions > 0 ? Number((totalAvgJitter / activeSessions).toFixed(3)) : 0,
+          max: Number(maxJitter.toFixed(3)),
+        },
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+      });
+      return;
+    }
+
     if (url.pathname === '/api/slow') {
       if (request.method !== 'GET') {
         response.setHeader('allow', 'GET');

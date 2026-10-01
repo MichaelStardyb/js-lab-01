@@ -66,6 +66,10 @@ export class RoomGame {
     this.#bullets.clear();
   }
 
+  getStats() {
+    return this.#ticker.getStats();
+  }
+
   receiveInput(socket, input) {
     const state = this.#players.get(socket);
     const previousSequence = state?.queued.at(-1)?.seq ?? state?.lastProcessedSeq;

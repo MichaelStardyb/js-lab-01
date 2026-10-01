@@ -85,6 +85,14 @@ test('room clients exchange authoritative snapshots using JSON and binary while 
     const chat = waitForMessage(binaryClient, (message) => message.type === 'chat' && message.text === 'gg');
     jsonClient.send(JSON.stringify({ v: 0, type: 'chat', text: 'gg' }));
     assert.equal((await chat).name, 'JSON Pilot');
+
+    const statsResponse = await fetch(`http://127.0.0.1:${address.port}/api/stats`);
+    assert.equal(statsResponse.status, 200);
+    const statsData = await statsResponse.json();
+    assert.equal(statsData.tickRate, 30);
+    assert.equal(statsData.activeSessions, 1);
+    assert.equal(statsData.players, 2);
+    assert.ok(statsData.ticks > 0);
   } finally {
     for (const client of clients) client.close();
     await runtime.close();

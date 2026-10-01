@@ -40,3 +40,22 @@ test('fixed ticker drops accumulated lag after a slow simulation step', () => {
   assert.ok(Math.abs(task.delay - 1000 / 30) < 0.000001);
   ticker.stop();
 });
+
+test('fixed ticker measures tick duration and jitter statistics', () => {
+  let time = 0;
+  let task;
+  const ticker = createFixedTicker({
+    now: () => time,
+    schedule: (callback, delay) => { task = { callback, delay }; return task; },
+    cancel: () => {},
+    tick: () => { time += 5; },
+  });
+  ticker.start();
+  time = 35; // scheduled was 33.333 -> jitter is 1.667ms
+  task.callback();
+  const stats = ticker.getStats();
+  assert.equal(stats.ticks, 1);
+  assert.equal(stats.durationMs.last, 5);
+  assert.ok(Math.abs(stats.jitterMs.last - (35 - 1000 / 30)) < 0.001);
+  ticker.stop();
+});

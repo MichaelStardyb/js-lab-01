@@ -14,12 +14,12 @@ canvas.height = 600 * dpr;
 ctx.scale(dpr, dpr);
 
 const query = new URLSearchParams(location.search);
-const interpolationDelay = Math.max(0, Math.min(1000, Number(query.get('delay') ?? 100) || 0));
+let interpolationDelay = Math.max(0, Math.min(1000, Number(query.get('delay') ?? 100) || 0));
 const networkDelay = Math.max(0, Math.min(2000, Number(query.get('delay') ?? query.get('latency') ?? 100) || 0));
 const networkJitter = Math.max(0, Math.min(1000, Number(query.get('jitter') ?? 15) || 0));
 const networkDrop = Math.max(0, Math.min(1, Number(query.get('drop') ?? 0.02) || 0));
-const dumbClient = query.get('dumb') === '1' || query.get('mode') === 'dumb';
-const nondeterministicExperiment = query.get('nondeterministic') === '1';
+let dumbClient = query.get('dumb') === '1' || query.get('mode') === 'dumb';
+let nondeterministicExperiment = query.get('nondeterministic') === '1';
 const input = createInput(window);
 const gameBus = new EventTarget();
 let ship = { x: 400, y: 300, vx: 0, vy: 0, angle: 0 };
@@ -43,7 +43,40 @@ const traffic = [];
 
 gameBus.addEventListener('fired', () => console.log('Піу-піу!'));
 
+function syncControlsUI() {
+  lobby.updateControls?.({ dumbClient, nondeterministicExperiment, interpolationDelay });
+}
+
+window.addEventListener('keydown', (event) => {
+  if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+  if (event.code === 'KeyP') {
+    dumbClient = !dumbClient;
+    syncControlsUI();
+  } else if (event.code === 'KeyN') {
+    nondeterministicExperiment = !nondeterministicExperiment;
+    syncControlsUI();
+  } else if (event.code === 'BracketLeft') {
+    interpolationDelay = Math.max(0, interpolationDelay - 10);
+    syncControlsUI();
+  } else if (event.code === 'BracketRight') {
+    interpolationDelay = Math.min(500, interpolationDelay + 10);
+    syncControlsUI();
+  }
+});
+
 const lobby = createLobby({
+  onTogglePrediction: () => {
+    dumbClient = !dumbClient;
+    syncControlsUI();
+  },
+  onToggleNoise: () => {
+    nondeterministicExperiment = !nondeterministicExperiment;
+    syncControlsUI();
+  },
+  onChangeInterp: (delta) => {
+    interpolationDelay = Math.max(0, Math.min(500, interpolationDelay + delta));
+    syncControlsUI();
+  },
   onJoin: ({ room, name }) => {
     activeRoom = room;
     playerName = name;
@@ -326,17 +359,24 @@ function drawNetgraph(stats) {
   while (traffic.length && traffic[0].time < now - 1000) traffic.shift();
   const bytesIn = traffic.filter((entry) => entry.direction === 'in').reduce((sum, entry) => sum + entry.bytes, 0);
   const bytesOut = traffic.filter((entry) => entry.direction === 'out').reduce((sum, entry) => sum + entry.bytes, 0);
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.76)';
-  ctx.fillRect(10, 10, 240, 144);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
+  ctx.fillRect(10, 10, 256, 168);
+  ctx.strokeStyle = '#52665d';
+  ctx.strokeRect(10, 10, 256, 168);
   ctx.fillStyle = '#a7ff83';
   ctx.font = '12px monospace';
+  const modeText = dumbClient ? 'DUMB (NO PREDICT)' : 'PREDICTION';
+  const noiseText = nondeterministicExperiment ? ' [NOISE ACTIVE]' : '';
   const lines = [
     `RTT: ${rtt === null ? '--' : `${rtt.toFixed(0)} ms`}`,
     `Snapshot age: ${lastSnapshotReceivedAt ? `${(now - lastSnapshotReceivedAt).toFixed(0)} ms` : '--'}`,
     `Traffic: ${(bytesIn / 1024).toFixed(2)} / ${(bytesOut / 1024).toFixed(2)} KB/s in/out`,
     `Pending inputs: ${pendingInputs.length}`,
     `Correction: ${correctionMagnitude.toFixed(2)} px`,
-    `${dumbClient ? 'DUMB' : 'PREDICTION'} | ${connection?.codec ?? 'offline'} | ${stats.fps} FPS`,
+    `Interp delay: ${interpolationDelay} ms (keys: [ / ])`,
+    `${modeText}${noiseText} | ${connection?.codec ?? 'offline'} | ${stats.fps} FPS`,
   ];
   lines.forEach((line, index) => ctx.fillText(line, 18, 29 + index * 20));
 }
+
+syncControlsUI();
