@@ -41,7 +41,33 @@ let fireCooldown = 0;
 let predictedBullets = [];
 const traffic = [];
 
-gameBus.addEventListener('fired', () => console.log('Піу-піу!'));
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playShootSound() {
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(110, audioCtx.currentTime + 0.1);
+  
+  gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+  
+  osc.start(audioCtx.currentTime);
+  osc.stop(audioCtx.currentTime + 0.1);
+}
+
+gameBus.addEventListener('fired', () => {
+  console.log('Піу-піу!');
+  playShootSound();
+});
 
 function syncControlsUI() {
   lobby.updateControls?.({ dumbClient, nondeterministicExperiment, interpolationDelay });
@@ -234,6 +260,7 @@ function runGame() {
       if (!connection || ownEntityId === null) return;
       seq = (seq + 1) >>> 0;
       const nextInput = {
+        type: 'input',
         seq,
         thrust: input.isDown('ArrowUp') || input.isDown('KeyW'),
         turnLeft: input.isDown('ArrowLeft') || input.isDown('KeyA'),

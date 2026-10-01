@@ -3,7 +3,7 @@ export const INPUT_MESSAGE_TYPE = 1;
 export const SNAPSHOT_MESSAGE_TYPE = 2;
 export const INPUT_PACKET_BYTES = 7;
 export const SNAPSHOT_HEADER_BYTES = 12;
-export const SNAPSHOT_ENTITY_BYTES = 15;
+export const SNAPSHOT_ENTITY_BYTES = 17;
 
 function asUint8Array(buffer) {
   if (buffer instanceof ArrayBuffer) return new Uint8Array(buffer);
@@ -87,8 +87,8 @@ export function encodeSnapshot(snapshot) {
     view.setFloat32(offset + 3, entity.x, true);
     view.setFloat32(offset + 7, entity.y, true);
     view.setInt16(offset + 11, encodeAngle(entity.angle), true);
-    view.setInt8(offset + 13, clamp(Math.round(entity.vx / 4), -128, 127));
-    view.setInt8(offset + 14, clamp(Math.round(entity.vy / 4), -128, 127));
+    view.setInt16(offset + 13, clamp(Math.round(entity.vx), -32768, 32767), true);
+    view.setInt16(offset + 15, clamp(Math.round(entity.vy), -32768, 32767), true);
     offset += SNAPSHOT_ENTITY_BYTES;
   }
   return buffer;
@@ -113,8 +113,8 @@ export function decodeSnapshot(packet) {
       x: view.getFloat32(offset + 3, true),
       y: view.getFloat32(offset + 7, true),
       angle: view.getInt16(offset + 11, true) / 10000,
-      vx: view.getInt8(offset + 13) * 4,
-      vy: view.getInt8(offset + 14) * 4,
+      vx: view.getInt16(offset + 13, true),
+      vy: view.getInt16(offset + 15, true),
     };
     if (![entity.x, entity.y].every(Number.isFinite)) throw new Error('snapshot contains non-finite coordinates');
     entities.push(entity);

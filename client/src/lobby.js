@@ -1,4 +1,4 @@
-export function createLobby({ onJoin, onLeave, onChat }) {
+export function createLobby({ onJoin, onLeave, onChat, onTogglePrediction, onToggleNoise, onChangeInterp }) {
   const root = document.querySelector('#lobby');
   root.innerHTML = `
     <h1>Dogfight</h1>
