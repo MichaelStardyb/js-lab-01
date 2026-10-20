@@ -30,6 +30,9 @@ export function integrate(ship: ShipState, input: ShipInput, dt: number, arena: 
   const damping = DAMPING_PER_60_HZ_STEP ** (dt * 60);
   vx *= damping;
   vy *= damping;
-  const position = wrapPosition({ x: ship.x + vx * dt, y: ship.y + vy * dt }, arena);
-  return { ...ship, x: position.x, y: position.y, vx, vy, angle };
+  const rawX = ship.x + vx * dt;
+  const rawY = ship.y + vy * dt;
+  const x = ((rawX % arena.width) + arena.width) % arena.width;
+  const y = ((rawY % arena.height) + arena.height) % arena.height;
+  return { ...ship, x, y, vx, vy, angle };
 }

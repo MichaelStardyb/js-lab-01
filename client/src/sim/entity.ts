@@ -23,15 +23,14 @@ export class Entity {
     }
 
     update(dt: number, world?: World) {
-        let p = this.pos.add(this.vel.scale(dt));
-        let x = p.x;
-        let y = p.y;
+        let x = this.pos.x + this.vel.x * dt;
+        let y = this.pos.y + this.vel.y * dt;
         // Загортання за краї екрана
         if (x < 0) x = 800;
         if (x > 800) x = 0;
         if (y < 0) y = 600;
         if (y > 600) y = 0;
-        this.pos = new Vector2(x, y);
+        this.pos.mut_set(x, y);
     }
     collideWith(other: Entity, world: World) {}
 }
@@ -175,7 +174,7 @@ export class Explosion extends Entity {
             if (world) world.despawn(this.id);
         }
         for (let p of this.particles) {
-            p.pos = p.pos.add(p.vel.scale(dt));
+            p.pos.mut_addScaled(p.vel, dt);
         }
     }
 }

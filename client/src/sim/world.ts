@@ -29,7 +29,7 @@ export class World {
                 const b = entities[j];
                 if (!a || !b || !a.alive || !b.alive) continue;
                 
-                const dist = a.pos.sub(b.pos).length();
+                const dist = a.pos.distanceTo(b.pos);
                 if (dist < a.radius + b.radius) {
                     a.collideWith(b, this);
                     b.collideWith(a, this);
