@@ -1,0 +1,50 @@
+[
+  {
+    "clients": 8,
+    "stepP50Ms": 0.05249999999978172,
+    "stepP95Ms": 0.1554999999998472,
+    "stepP99Ms": 0.25789999999960855,
+    "stepMaxMs": 0.2880000000000109,
+    "eventLoopDelayP50Ms": 31.260671,
+    "eventLoopDelayP99Ms": 32.374783,
+    "rssMb": 83.23828125,
+    "bytesOutPerSec": 63181.80204551092,
+    "overBudget": false
+  },
+  {
+    "clients": 32,
+    "stepP50Ms": 0.11400000000139698,
+    "stepP95Ms": 0.2614000000030501,
+    "stepP99Ms": 0.31630000000222935,
+    "stepMaxMs": 0.42400000000270666,
+    "eventLoopDelayP50Ms": 31.326207,
+    "eventLoopDelayP99Ms": 32.456703,
+    "rssMb": 112.0703125,
+    "bytesOutPerSec": 1068490.4678748301,
+    "overBudget": false
+  },
+  {
+    "clients": 64,
+    "stepP50Ms": 0.20060000000376021,
+    "stepP95Ms": 0.3264000000053784,
+    "stepP99Ms": 0.4320000000006985,
+    "stepMaxMs": 0.6716000000014901,
+    "eventLoopDelayP50Ms": 31.309823,
+    "eventLoopDelayP99Ms": 33.325055,
+    "rssMb": 143.90234375,
+    "bytesOutPerSec": 3160861.7269408684,
+    "overBudget": false
+  },
+  {
+    "clients": 128,
+    "stepP50Ms": 0.30019999999785796,
+    "stepP95Ms": 0.5529999999998836,
+    "stepP99Ms": 0.730199999998149,
+    "stepMaxMs": 0.9163000000044121,
+    "eventLoopDelayP50Ms": 27.869183,
+    "eventLoopDelayP99Ms": 33.849343,
+    "rssMb": 227.08203125,
+    "bytesOutPerSec": 11184550.523595748,
+    "overBudget": false
+  }
+]

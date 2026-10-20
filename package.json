@@ -21,6 +21,7 @@
     "bots": "tsx server/scripts/run-bots.ts",
     "bench:browser": "tsx server/scripts/bench-browser.ts",
     "bench:report": "tsx server/scripts/bench-report.ts",
+    "bench:load": "tsx server/scripts/bench-load.ts",
     "bench:collisions": "tsx server/scripts/bench-collisions.ts",
     "bench:netcode": "tsx server/scripts/bench-netcode.ts",
     "typecheck": "tsc -b"

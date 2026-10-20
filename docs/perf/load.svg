@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 400" width="720" height="400" style="background:#18181b;border-radius:8px;">
+  <!-- Title -->
+  <text x="360" y="28" fill="#fff" font-size="16" font-weight="bold" text-anchor="middle" font-family="sans-serif">Серверний бенчмарк навантаження: Час кроку vs Кількість клієнтів</text>
+
+  <!-- Grid & Axes -->
+  
+      <line x1="70" y1="340" x2="680" y2="340" stroke="#333" stroke-width="1" stroke-dasharray="3,3" />
+      <text x="60" y="344" fill="#888" font-size="11" text-anchor="end" font-family="monospace">0.0ms</text>
+    
+      <line x1="70" y1="266.7676767676768" x2="680" y2="266.7676767676768" stroke="#333" stroke-width="1" stroke-dasharray="3,3" />
+      <text x="60" y="270.7676767676768" fill="#888" font-size="11" text-anchor="end" font-family="monospace">10.0ms</text>
+    
+      <line x1="70" y1="193.53535353535352" x2="680" y2="193.53535353535352" stroke="#333" stroke-width="1" stroke-dasharray="3,3" />
+      <text x="60" y="197.53535353535352" fill="#888" font-size="11" text-anchor="end" font-family="monospace">20.0ms</text>
+    
+      <line x1="70" y1="120.30303030303031" x2="680" y2="120.30303030303031" stroke="#333" stroke-width="1" stroke-dasharray="3,3" />
+      <text x="60" y="124.30303030303031" fill="#888" font-size="11" text-anchor="end" font-family="monospace">30.0ms</text>
+    
+      <line x1="70" y1="95.91666666666669" x2="680" y2="95.91666666666669" stroke="#333" stroke-width="1" stroke-dasharray="3,3" />
+      <text x="60" y="99.91666666666669" fill="#888" font-size="11" text-anchor="end" font-family="monospace">33.3ms</text>
+    
+  
+      <line x1="70" y1="340" x2="70" y2="346" stroke="#666" stroke-width="1" />
+      <text x="70" y="362" fill="#ccc" font-size="12" text-anchor="middle" font-family="sans-serif">8 клієнтів</text>
+    
+      <line x1="273.3333333333333" y1="340" x2="273.3333333333333" y2="346" stroke="#666" stroke-width="1" />
+      <text x="273.3333333333333" y="362" fill="#ccc" font-size="12" text-anchor="middle" font-family="sans-serif">32 клієнтів</text>
+    
+      <line x1="476.66666666666663" y1="340" x2="476.66666666666663" y2="346" stroke="#666" stroke-width="1" />
+      <text x="476.66666666666663" y="362" fill="#ccc" font-size="12" text-anchor="middle" font-family="sans-serif">64 клієнтів</text>
+    
+      <line x1="680" y1="340" x2="680" y2="346" stroke="#666" stroke-width="1" />
+      <text x="680" y="362" fill="#ccc" font-size="12" text-anchor="middle" font-family="sans-serif">128 клієнтів</text>
+    
+  <line x1="70" y1="340" x2="680" y2="340" stroke="#666" stroke-width="1.5" />
+  <line x1="70" y1="50" x2="70" y2="340" stroke="#666" stroke-width="1.5" />
+
+  <!-- 33.33ms Step Budget Line -->
+  <line x1="70" y1="95.91666666666669" x2="680" y2="95.91666666666669" stroke="#ef4444" stroke-width="2" stroke-dasharray="6,4" />
+  <text x="680" y="89.91666666666669" fill="#ef4444" font-size="11" font-weight="bold" text-anchor="end" font-family="monospace">Бюджет кроку 30 Гц (33.3 мс)</text>
+
+  <!-- Data Polylines -->
+  <polyline points="70,339.6155303030319 273.3333333333333,339.1651515151413 476.66666666666663,338.5309595959321 680,337.8015656565813" fill="none" stroke="#22c55e" stroke-width="2.5" />
+  <polyline points="70,338.8612373737385 273.3333333333333,338.08570707068475 476.66666666666663,337.6096969696576 680,335.9502525252534" fill="none" stroke="#eab308" stroke-width="2.5" />
+  <polyline points="70,338.11133838384126 273.3333333333333,337.6836616161453 476.66666666666663,336.8363636363585 680,334.6525757575893" fill="none" stroke="#3b82f6" stroke-width="2.5" />
+
+  <!-- Data Points -->
+  
+    <circle cx="70" cy="339.6155303030319" r="4" fill="#22c55e" />
+    <circle cx="70" cy="338.8612373737385" r="4" fill="#eab308" />
+    <circle cx="70" cy="338.11133838384126" r="4" fill="#3b82f6" />
+    <text x="70" y="328.11133838384126" fill="#93c5fd" font-size="10" font-family="monospace" text-anchor="middle">0.26ms</text>
+  
+    <circle cx="273.3333333333333" cy="339.1651515151413" r="4" fill="#22c55e" />
+    <circle cx="273.3333333333333" cy="338.08570707068475" r="4" fill="#eab308" />
+    <circle cx="273.3333333333333" cy="337.6836616161453" r="4" fill="#3b82f6" />
+    <text x="273.3333333333333" y="327.6836616161453" fill="#93c5fd" font-size="10" font-family="monospace" text-anchor="middle">0.32ms</text>
+  
+    <circle cx="476.66666666666663" cy="338.5309595959321" r="4" fill="#22c55e" />
+    <circle cx="476.66666666666663" cy="337.6096969696576" r="4" fill="#eab308" />
+    <circle cx="476.66666666666663" cy="336.8363636363585" r="4" fill="#3b82f6" />
+    <text x="476.66666666666663" y="326.8363636363585" fill="#93c5fd" font-size="10" font-family="monospace" text-anchor="middle">0.43ms</text>
+  
+    <circle cx="680" cy="337.8015656565813" r="4" fill="#22c55e" />
+    <circle cx="680" cy="335.9502525252534" r="4" fill="#eab308" />
+    <circle cx="680" cy="334.6525757575893" r="4" fill="#3b82f6" />
+    <text x="680" y="324.6525757575893" fill="#93c5fd" font-size="10" font-family="monospace" text-anchor="middle">0.73ms</text>
+  
+
+  <!-- Legend -->
+  <g transform="translate(90, 45)">
+    <circle cx="0" cy="0" r="4" fill="#22c55e" />
+    <text x="10" y="4" fill="#22c55e" font-size="11" font-family="sans-serif">p50</text>
+    <circle cx="50" cy="0" r="4" fill="#eab308" />
+    <text x="60" y="4" fill="#eab308" font-size="11" font-family="sans-serif">p95</text>
+    <circle cx="100" cy="0" r="4" fill="#3b82f6" />
+    <text x="110" y="4" fill="#3b82f6" font-size="11" font-family="sans-serif">p99</text>
+  </g>
+</svg>

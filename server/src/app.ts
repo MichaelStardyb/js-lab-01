@@ -96,8 +96,13 @@ export function createHttpHandler({ config, roomManager, staticDir, metrics }: {
         respondJson(response, 404, { error: 'Metrics are disabled' });
         return;
       }
+      if (request.method === 'POST') {
+        metrics.reset();
+        respondJson(response, 200, { reset: true });
+        return;
+      }
       if (request.method !== 'GET') {
-        response.setHeader('allow', 'GET');
+        response.setHeader('allow', 'GET, POST');
         respondJson(response, 405, { error: 'Method not allowed' });
         return;
       }

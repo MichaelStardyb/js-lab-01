@@ -32,7 +32,8 @@ export async function startBots({
   for (let i = 1; i <= count; i++) {
     const botName = `bot-${i}`;
     const rng = mulberry32(1000 + i * 37);
-    const wsUrl = `${url}?codec=${codec}&delay=0&jitter=0&drop=0`;
+    const hasQuery = url.includes('?');
+    const wsUrl = hasQuery ? `${url}&delay=0&jitter=0&drop=0` : `${url}?codec=${codec}&delay=0&jitter=0&drop=0`;
     const socket = new WebSocket(wsUrl);
     sockets.push(socket);
 
@@ -105,6 +106,17 @@ export async function startBots({
 
     intervals.push(timer);
   }
+
+  // Wait for all bot sockets to connect
+  await Promise.all(
+    sockets.map((s) => new Promise<void>((resolve) => {
+      if (s.readyState === WebSocket.OPEN) resolve();
+      else {
+        s.once('open', () => resolve());
+        s.once('error', () => resolve());
+      }
+    }))
+  );
 
   onLog(`Started ${count} bots in room "${room}" against ${url} for ${duration}s`);
 
