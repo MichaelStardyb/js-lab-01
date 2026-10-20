@@ -17,6 +17,8 @@
     "./sim/prng.js": "./sim/prng.ts",
     "./sim/pool": "./sim/pool.ts",
     "./sim/pool.js": "./sim/pool.ts",
+    "./sim/spatialHash": "./sim/spatialHash.ts",
+    "./sim/spatialHash.js": "./sim/spatialHash.ts",
     "./protocol/binaryCodec": "./protocol/binaryCodec.ts",
     "./protocol/binaryCodec.js": "./protocol/binaryCodec.ts",
     "./protocol/schema": "./protocol/schema.ts",

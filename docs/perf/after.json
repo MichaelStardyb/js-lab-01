@@ -1,0 +1,82 @@
+{
+  "label": "after",
+  "timestamp": "2026-10-20T12:22:45.638Z",
+  "durationSeconds": 30,
+  "client": {
+    "frameCount": 1826,
+    "p50FrameMs": 0.09999999962747097,
+    "p95FrameMs": 0.2000000011175871,
+    "p99FrameMs": 0.2000000011175871,
+    "maxFrameMs": 0.40000000037252903,
+    "avgFrameMs": 0.10531215794049897,
+    "framesOver16ms": 0,
+    "p50IntervalMs": 16.69999999999891,
+    "p95IntervalMs": 16.700000000004366,
+    "p99IntervalMs": 16.800000000000182,
+    "longTaskCount": 0,
+    "longAnimFrameCount": 0,
+    "jsHeapUsedSize": 3768018,
+    "jsHeapTotalSize": 8255550,
+    "gc": {
+      "minorCount": 415,
+      "minorTotalMs": 40.12,
+      "minorMaxMs": 0.57,
+      "majorCount": 271,
+      "majorTotalMs": 20.72,
+      "majorMaxMs": 3.35,
+      "longGcPauses": 0
+    },
+    "top10Allocators": [
+      {
+        "name": "(IDLE_EXTERNAL)",
+        "location": ":-1:-1",
+        "bytes": 68680,
+        "kb": 67
+      }
+    ]
+  },
+  "server": {
+    "simulation": {
+      "totalTicks": 1073,
+      "overBudgetCount": 0,
+      "overBudgetRatio": 0,
+      "p50Ms": 0.05379999999968277,
+      "p95Ms": 0.15710000000035507,
+      "p99Ms": 0.2278999999998632,
+      "maxMs": 0.8996999999999389,
+      "avgMs": 0.0659581547064241,
+      "stepLagP50Ms": 0.638,
+      "stepLagP99Ms": 14.16,
+      "stepLagMaxMs": 14.911
+    },
+    "eventLoop": {
+      "p50Ms": 31.014911,
+      "p95Ms": 32.145407,
+      "p99Ms": 33.783807,
+      "maxMs": 472.383487
+    },
+    "gc": {
+      "minorCount": 0,
+      "minorDurationMs": 0,
+      "majorCount": 88,
+      "majorDurationMs": 40.39080000668764,
+      "totalCount": 88,
+      "totalDurationMs": 40.39080000668764
+    },
+    "memory": {
+      "rss": 171753472,
+      "heapTotal": 100392960,
+      "heapUsed": 73567312,
+      "external": 17072417
+    },
+    "network": {
+      "bytesOutPerSec": 128547.03518590398,
+      "totalBytesOut": 4259393
+    },
+    "world": {
+      "activeRooms": 1,
+      "activeClients": 9,
+      "activeEntities": 9
+    }
+  }
+}
