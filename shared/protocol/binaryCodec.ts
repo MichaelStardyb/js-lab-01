@@ -197,9 +197,9 @@ export function decodeSnapshot(packet: unknown): SnapshotMessage {
       kind: rawKind,
       x: view.getFloat32(offset + 3, true),
       y: view.getFloat32(offset + 7, true),
-      angle: view.getInt16(offset + 11, true) / 10000,
       vx: view.getInt16(offset + 13, true),
       vy: view.getInt16(offset + 15, true),
+      angle: view.getInt16(offset + 11, true) / 10000,
       hp: view.getUint8(offset + 17),
     };
     if (![entity.x, entity.y].every(Number.isFinite)) throw new Error('snapshot contains non-finite coordinates');

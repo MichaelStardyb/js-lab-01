@@ -203,6 +203,8 @@ interface RenderableEntity {
   kind: typeof SHIP_KIND | typeof BULLET_KIND | typeof ASTEROID_KIND | typeof PICKUP_KIND;
   x: number;
   y: number;
+  vx: number;
+  vy: number;
   angle: number;
   hp?: number;
 }
@@ -722,10 +724,14 @@ function interpolatedEntities(renderTime: number): readonly (SnapshotEntity | Re
       continue;
     }
     result.push({
-      ...to,
+      id: to.id,
+      kind: to.kind,
       x: from.x + shortestDelta(from.x, to.x, 800) * alpha,
       y: from.y + shortestDelta(from.y, to.y, 600) * alpha,
+      vx: to.vx,
+      vy: to.vy,
       angle: lerpAngle(from.angle, to.angle, alpha),
+      hp: to.hp,
     });
   }
   return result;
@@ -758,6 +764,8 @@ function drawFrame(stats: LoopStats) {
       kind: SHIP_KIND,
       x: (ship.x + visualOffset.x + 800) % 800,
       y: (ship.y + visualOffset.y + 600) % 600,
+      vx: ship.vx,
+      vy: ship.vy,
       angle: ship.angle,
       hp: ownHp,
     };
