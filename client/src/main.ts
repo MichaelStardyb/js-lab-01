@@ -18,6 +18,13 @@ import './style.css';
 declare global {
   interface Window {
     webkitAudioContext?: typeof AudioContext;
+    __e2e?: {
+      getSnapshot: () => {
+        ownEntityId: number | null;
+        ownShip: { x: number; y: number; angle: number } | null;
+        ships: Array<{ id: number; x: number; y: number; angle: number; hp: number }>;
+      };
+    };
   }
 }
 
@@ -48,6 +55,30 @@ let playerName: string | undefined;
 let ownEntityId: EntityId | null = null;
 let initialized = false;
 let seq: Seq = asSeq(0);
+
+if (query.get('e2e') === '1') {
+  window.__e2e = {
+    getSnapshot: () => {
+      const ships: Array<{ id: number; x: number; y: number; angle: number; hp: number }> = [];
+      for (const e of currentEntities) {
+        if (e.kind === SHIP_KIND) {
+          ships.push({
+            id: e.id,
+            x: e.x,
+            y: e.y,
+            angle: e.angle,
+            hp: e.hp ?? 100,
+          });
+        }
+      }
+      return {
+        ownEntityId: ownEntityId !== null ? ownEntityId : null,
+        ownShip: initialized ? { x: ship.x, y: ship.y, angle: ship.angle } : null,
+        ships,
+      };
+    },
+  };
+}
 interface PendingInput {
   type: string;
   seq: Seq;
