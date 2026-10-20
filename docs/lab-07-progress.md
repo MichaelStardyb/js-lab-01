@@ -5,7 +5,7 @@
 | Фаза | Опис | Статус | Примітки / Результат |
 | :--- | :--- | :---: | :--- |
 | **0** | **Розвідка та архітектурний аудит** | [x] Виконано | Створено `docs/lab-07-plan.md` та `docs/lab-07-progress.md`. Проведено інвентаризацію гарячого шляху, серверних лімітів та точок алокацій. |
-| **1 (M1)** | **Тести: Vitest у client, server, shared** | [ ] В процесі | Потрібно: налаштувати Vitest, пороги покриття (shared ≥ 85%), ≥ 60 тестів, 5 fast-check property тестів, fake-timers `createLoop`, мутаційні тести M1. |
+| **1 (M1)** | **Тести: Vitest у client, server, shared** | [x] Виконано | Налаштовано Vitest, 114 тестів (shared: 52, server: 26, client: 36), покриття shared ≥ 91% (Statements 95.1%, Branch 91.25%, Funcs 100%, Lines 96.24%), 5 fast-check property тестів, fake-timers `createLoop`, мутаційні тести M1 задокументовано. |
 | **2 (M2)** | **Playwright E2E + GitHub Actions CI** | [ ] Заплановано | Потрібно: 2 ізольовані контексти браузера (рух і чат), типізований `window.__e2e`, оновлення `.github/workflows/ci.yml`, локальний `npm run ci`. |
 | **3** | **Боти та харнес вимірювань** | [ ] Заплановано | Потрібно: боти в `shared/` + `tools/bots`, `GET /metrics` на сервері, клієнтські метрики `window.__perf`, `bench:browser`, `bench:report`. |
 | **4** | **Baseline (Заморожування базового стану)** | [ ] Заплановано | Потрібно: тег `perf-baseline`, замір 3 прогонів медіани, збереження `docs/perf/before.json` та `before.md`. |
@@ -28,11 +28,47 @@
 
 ---
 
+### Фаза 1 (M1): Vitest та повноцінне тестування
+- **Конфігурація**: Встановлено `vitest`, `@vitest/coverage-v8`, `fast-check`, `happy-dom`. Створено `vitest.config.ts` у корені та у кожному workspace (`shared`, `server`, `client`). Додано скрипти `test` та `test:coverage`.
+- **Обсяг тестів**: 114 тестів (вимога ≥ 60 виконана з запасом):
+  - `shared/` (52 тести): `integrate.test.ts` (10), `binaryCodec.test.ts` (11), `schema.test.ts` (11), `arena.test.ts` (7), `prng.test.ts` (4), `simulation.test.ts` (4), `property.test.ts` (5).
+  - `server/` (26 тестів): `protocol.test.ts` (13), `room.test.ts` (5), `config.test.ts` (4), `loop.test.ts` (3), `multiplayer.test.ts` (1).
+  - `client/` (36 тестів): `vector.test.ts` (8), `world.test.ts` (8), `collision.test.ts` (8), `loop.test.ts` (6), `reconciliation.test.ts` (6).
+- **Fast-check Property-тести (5 інваріантів у `property.test.ts`)**:
+  1. *Roundtrip*: `decodeSnapshot(encodeSnapshot(s))` зберігає всі поля, кут квантується з похибкою $\le 0.00015$ рад (шкала Int16 $\times 10000$).
+  2. *Frame length*: `byteLength` дорівнює точно $12 + N \times 18$ для знімків та $7$ для input.
+  3. *Corrupted buffer*: Довільні байти у буфері викликають контрольований `Error`/`RangeError`/`TypeError`, жодного необробленого збою чи виходу за межі пам'яті.
+  4. *Arena containment*: Позиція корабля залишається строго в межах $[0, \text{width}) \times [0, \text{height})$ після довільної послідовності входів.
+  5. *parseClientMessage*: Приймає всі валідні повідомлення схем і безпечно відхиляє пошкоджені.
+- **Покриття `shared/` (`v8`)**:
+  - Statements: **95.10%** (поріг $\ge 85\%$)
+  - Branches: **91.25%** (поріг $\ge 85\%$)
+  - Functions: **100.00%** (поріг $\ge 85\%$)
+  - Lines: **96.24%** (поріг $\ge 85\%$)
+
+#### Мутаційне тестування M1 (Протокол перевірки чутливості тестів):
+
+1. **Мутація 1: Зміна знаку прискорення в `shared/sim/ship.ts`**:
+   - *Зміна*: `const acceleration = input.thrust ? -ACCELERATION * dt : 0;` (замість `+ACCELERATION * dt`).
+   - *Результат `npm test`*: **FAIL** (2 падіння):
+     - `FAIL shared/test/integrate.test.ts > thrust applies acceleration along ship angle`: `AssertionError: expected -4.9 to be close to 4.9`.
+     - `FAIL client/test/reconciliation.test.ts > replays unconfirmed inputs on top of authoritative server snapshot`: `AssertionError: expected 399.05227728 to be greater than 400`.
+   - *Відновлення*: Після повернення рядка тест знову **PASS** (114/114).
+
+2. **Мутація 2: Зсув байта зміщення `seq` у кодеку `shared/protocol/binaryCodec.ts`**:
+   - *Зміна*: `view.setUint32(3, input.seq, true);` (замість зміщення `2`).
+   - *Результат `npm test`*: **FAIL** (2 падіння):
+     - `FAIL shared/test/binaryCodec.test.ts > round-trips input packets with 7-byte little-endian format`: `AssertionError: expected +0 to be 120`.
+     - `FAIL server/test/protocol.test.ts > accepts valid binary input packets`: `AssertionError: expected 3840 to be 15`.
+   - *Відновлення*: Після повернення зміщення на `2` тест знову **PASS** (114/114).
+
+---
+
 ## Definition of Done (Загальний стан)
-- [ ] Vitest у client/server/shared, ≥ 60 тестів, shared/ coverage ≥ 85 % з порогом
-- [ ] ≥ 5 fast-check property-тестів (roundtrip, довжина кадру, битий буфер, арена, parseClientMessage)
-- [ ] Тест fake-timers для `createLoop`; тести reconciliation і rate limiter
-- [ ] M1: зламаний `integrate` валить `npm test` (задокументовано)
+- [x] Vitest у client/server/shared, ≥ 60 тестів, shared/ coverage ≥ 85 % з порогом
+- [x] ≥ 5 fast-check property-тестів (roundtrip, довжина кадру, битий буфер, арена, parseClientMessage)
+- [x] Тест fake-timers для `createLoop`; тести reconciliation і rate limiter
+- [x] M1: зламаний `integrate` валить `npm test` (задокументовано)
 - [ ] Playwright: два контексти, рух і чат
 - [ ] GitHub Actions: типи, lint, тести, build, e2e; бейдж у README
 - [ ] Боти (той самий input і кодек), `bench:browser`, `bench:report`

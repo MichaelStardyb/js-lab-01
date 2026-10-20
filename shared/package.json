@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
   "exports": {
     "./sim/ship": "./sim/ship.ts",
     "./sim/ship.js": "./sim/ship.ts",

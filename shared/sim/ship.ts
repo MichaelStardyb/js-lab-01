@@ -1,4 +1,4 @@
-import { DEFAULT_ARENA, wrapAngle, wrapPosition } from './arena.js';
+import { DEFAULT_ARENA, type Arena, wrapAngle, wrapPosition } from './arena.js';
 
 const ROTATION_SPEED = 4;
 const ACCELERATION = 300;
@@ -19,7 +19,7 @@ export type ShipInput = {
   readonly fire?: boolean;
 };
 
-export function integrate(ship: ShipState, input: ShipInput, dt: number, arena = DEFAULT_ARENA): ShipState {
+export function integrate(ship: ShipState, input: ShipInput, dt: number, arena: Arena = DEFAULT_ARENA): ShipState {
   if (!Number.isFinite(dt) || dt < 0) throw new RangeError('dt must be a non-negative finite number');
   const angle = wrapAngle(
     ship.angle + (Number(Boolean(input.turnRight)) - Number(Boolean(input.turnLeft))) * ROTATION_SPEED * dt,

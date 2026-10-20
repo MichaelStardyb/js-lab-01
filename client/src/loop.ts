@@ -4,18 +4,34 @@ export interface LoopStats {
     frameMs: number;
 }
 
-export function createLoop({ step = 1/60, simulate, render }: { step?: number; simulate: (step: number) => void; render: (alpha: number, stats: LoopStats) => void }) {
+export interface LoopOptions {
+    step?: number;
+    simulate: (step: number) => void;
+    render: (alpha: number, stats: LoopStats) => void;
+    now?: () => number;
+    raf?: (callback: (time: number) => void) => number;
+    caf?: (id: number) => void;
+}
+
+export function createLoop({
+    step = 1/60,
+    simulate,
+    render,
+    now = () => performance.now(),
+    raf = (cb) => requestAnimationFrame(cb),
+    caf = (id) => cancelAnimationFrame(id),
+}: LoopOptions) {
     let accumulator = 0;
-    let last = performance.now();
+    let last = now();
     let frameId: number | undefined;
     let frames = 0, steps = 0, lastFpsTime = last;
     let stats = { fps: 0, sps: 0, frameMs: 0 };
 
-    function frame(now: number) {
-        stats.frameMs = now - last;
+    function frame(currentTime: number) {
+        stats.frameMs = currentTime - last;
         let dt = stats.frameMs / 1000;
         if (dt > 0.25) dt = 0.25; 
-        last = now;
+        last = currentTime;
         accumulator += dt;
 
         while (accumulator >= step) {
@@ -26,18 +42,18 @@ export function createLoop({ step = 1/60, simulate, render }: { step?: number; s
         render(accumulator / step, stats);
         frames++;
 
-        if (now - lastFpsTime >= 1000) {
+        if (currentTime - lastFpsTime >= 1000) {
             stats.fps = frames;
             stats.sps = steps;
             frames = 0;
             steps = 0;
-            lastFpsTime = now;
+            lastFpsTime = currentTime;
         }
-        frameId = requestAnimationFrame(frame);
+        frameId = raf(frame);
     }
 
     return {
-        start: () => { last = performance.now(); frame(last); },
-        stop: () => { if (frameId !== undefined) cancelAnimationFrame(frameId); }
+        start: () => { last = now(); frame(last); },
+        stop: () => { if (frameId !== undefined) caf(frameId); }
     };
 }
