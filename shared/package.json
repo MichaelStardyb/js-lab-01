@@ -4,9 +4,15 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./sim/ship": "./sim/ship.js",
-    "./sim/arena": "./sim/arena.js",
-    "./sim/prng": "./sim/prng.js",
-    "./protocol/binaryCodec": "./protocol/binaryCodec.js"
+    "./sim/ship": "./sim/ship.ts",
+    "./sim/ship.js": "./sim/ship.ts",
+    "./sim/arena": "./sim/arena.ts",
+    "./sim/arena.js": "./sim/arena.ts",
+    "./sim/prng": "./sim/prng.ts",
+    "./sim/prng.js": "./sim/prng.ts",
+    "./protocol/binaryCodec": "./protocol/binaryCodec.ts",
+    "./protocol/binaryCodec.js": "./protocol/binaryCodec.ts",
+    "./protocol/schema": "./protocol/schema.ts",
+    "./protocol/schema.js": "./protocol/schema.ts"
   }
 }

@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --env-file-if-exists=../.env src/index.js",
-    "start": "node --env-file-if-exists=../.env src/index.js",
-    "bench:rss": "node --env-file-if-exists=../.env scripts/bench-rss.js"
+    "dev": "tsx --env-file-if-exists=../.env src/index.ts",
+    "start": "tsx --env-file-if-exists=../.env src/index.ts",
+    "bench:rss": "tsx --env-file-if-exists=../.env scripts/bench-rss.ts"
   },
   "dependencies": {
     "shared": "*",
