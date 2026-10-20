@@ -9,6 +9,8 @@
   "exports": {
     "./sim/ship": "./sim/ship.ts",
     "./sim/ship.js": "./sim/ship.ts",
+    "./sim/bot": "./sim/bot.ts",
+    "./sim/bot.js": "./sim/bot.ts",
     "./sim/arena": "./sim/arena.ts",
     "./sim/arena.js": "./sim/arena.ts",
     "./sim/prng": "./sim/prng.ts",

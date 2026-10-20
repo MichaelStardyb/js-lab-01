@@ -18,6 +18,9 @@
     "test:e2e": "playwright test",
     "ci": "npm run typecheck && npm run lint && npm run test:coverage && npm run build && npm run test:e2e",
     "lint": "tsx server/scripts/check-syntax.ts",
+    "bots": "tsx server/scripts/run-bots.ts",
+    "bench:browser": "tsx server/scripts/bench-browser.ts",
+    "bench:report": "tsx server/scripts/bench-report.ts",
     "bench:netcode": "tsx server/scripts/bench-netcode.ts",
     "typecheck": "tsc -b"
   },

@@ -1,3 +1,4 @@
+import type { MetricsCollector } from './metrics.js';
 import { DEFAULT_ARENA } from 'shared/sim/arena.js';
 import { integrate } from 'shared/sim/ship.js';
 import { mulberry32 } from 'shared/sim/prng.js';
@@ -98,18 +99,22 @@ export class RoomGame {
   #tick: Tick = asTick(0);
   #random: () => number;
   #ticker: FixedTicker;
+  #metrics?: MetricsCollector;
 
   constructor({
     send,
     now = () => performance.now(),
     randomSeed = 0xD06F19,
+    metrics,
   }: {
+    metrics?: MetricsCollector;
     send: (socket: GameSocket, value: unknown, options?: SendOptions) => void;
     now?: () => number;
     randomSeed?: number;
   } = { send: () => {} }) {
     this.#send = send;
     this.#random = mulberry32(randomSeed);
+    this.#metrics = metrics;
     this.#initWorldEntities();
     this.#ticker = createFixedTicker({ tick: (dt) => this.#step(dt), now });
   }
@@ -209,6 +214,7 @@ export class RoomGame {
 
   #step(dt: number): void {
     if (this.#players.size === 0) return;
+    const stepStartTime = performance.now();
     this.#tick = asTick((this.#tick + 1) >>> 0);
     for (const player of this.#players.values()) {
       if (player.queued.length > 0) {
@@ -365,6 +371,11 @@ export class RoomGame {
         dropWhenBuffered: true,
         simulated: true,
       });
+    }
+    if (this.#metrics) {
+      const stepDuration = performance.now() - stepStartTime;
+      const stats = this.#ticker.getStats();
+      this.#metrics.recordTick(stepDuration, stats.jitterMs.last);
     }
   }
 

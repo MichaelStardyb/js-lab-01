@@ -1,3 +1,4 @@
+import { MetricsCollector } from './metrics.js';
 import { createReadStream } from 'node:fs';
 import { mkdir, stat } from 'node:fs/promises';
 import http from 'node:http';
@@ -67,7 +68,7 @@ function readJsonBody(request: IncomingMessage, maxBytes: number): Promise<unkno
   });
 }
 
-export function createHttpHandler({ config, roomManager, staticDir }: { config: ReturnType<typeof loadConfig>, roomManager: RoomManager, staticDir: string | null }) {
+export function createHttpHandler({ config, roomManager, staticDir, metrics }: { config: ReturnType<typeof loadConfig>, roomManager: RoomManager, staticDir: string | null, metrics?: MetricsCollector }) {
   return async function handleRequest(request: IncomingMessage, response: ServerResponse) {
     const rawPath = (request.url ?? '').split('?', 1)[0];
     let decodedRawPath: string;
@@ -87,6 +88,20 @@ export function createHttpHandler({ config, roomManager, staticDir }: { config: 
       url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
     } catch {
       respondJson(response, 400, { error: 'Invalid request URL' });
+      return;
+    }
+
+    if (url.pathname === '/metrics') {
+      if (!config.enableMetrics || !metrics) {
+        respondJson(response, 404, { error: 'Metrics are disabled' });
+        return;
+      }
+      if (request.method !== 'GET') {
+        response.setHeader('allow', 'GET');
+        respondJson(response, 405, { error: 'Method not allowed' });
+        return;
+      }
+      respondJson(response, 200, metrics.getSummary(roomManager));
       return;
     }
 
@@ -288,8 +303,9 @@ export function createGameServer({ config = loadConfig(), staticDir = defaultSta
   if (!config || typeof config !== 'object') throw new TypeError('config must be an object');
   staticDir = staticDir === null ? null : resolve(staticDir);
   const roomManager = new RoomManager({ maxRooms: config.maxRooms, logDir: config.logDir });
-  const httpServer = http.createServer(createHttpHandler({ config, roomManager, staticDir }));
-  const wsRuntime = attachWebSocketServer(httpServer, { config, roomManager });
+  const metrics = new MetricsCollector(config.enableMetrics);
+  const httpServer = http.createServer(createHttpHandler({ config, roomManager, staticDir, metrics }));
+  const wsRuntime = attachWebSocketServer(httpServer, { config, roomManager, metrics });
 
   httpServer.on('clientError', (_error, socket) => {
     if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
@@ -322,6 +338,7 @@ export function createGameServer({ config = loadConfig(), staticDir = defaultSta
       : Promise.resolve();
     await wsRuntime.close();
     await httpClose;
+    metrics.destroy();
   }
 
   return Object.freeze({
@@ -330,6 +347,7 @@ export function createGameServer({ config = loadConfig(), staticDir = defaultSta
     webSocketServer: wsRuntime.webSocketServer,
     rooms: roomManager.rooms,
     config,
+    metrics,
     listen,
     close,
   });

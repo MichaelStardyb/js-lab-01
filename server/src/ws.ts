@@ -1,3 +1,4 @@
+import type { MetricsCollector } from './metrics.js';
 import { randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -39,7 +40,7 @@ function playerRoster(room: Room) {
 
 export function attachWebSocketServer(
   httpServer: http.Server,
-  { config, roomManager }: { config: Config; roomManager: RoomManager },
+  { config, roomManager, metrics }: { config: Config; roomManager: RoomManager; metrics?: MetricsCollector },
 ) {
   const clients = new Set<DogfightSocket>();
   const webSocketServer = new WebSocketServer({
@@ -53,6 +54,13 @@ export function attachWebSocketServer(
 
   function send(socket: DogfightSocket, value: unknown, { dropWhenBuffered = false } = {}): boolean {
     if (socket.readyState !== WebSocket.OPEN) return false;
+    if (metrics) {
+      if (Buffer.isBuffer(value) || value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
+        metrics.recordBytesOut(value.byteLength);
+      } else {
+        metrics.recordBytesOut(Buffer.byteLength(JSON.stringify(value)));
+      }
+    }
     if (socket.bufferedAmount > config.maxBufferedAmount) {
       if (dropWhenBuffered) return false;
       socket.close(1013, 'Client is too slow');
@@ -135,7 +143,7 @@ export function attachWebSocketServer(
     socket.player = player;
     clearTimeout(socket.joinTimer);
     room.add(socket, player);
-    room.gameSession ??= new RoomGame({ send: sendGamePacket });
+    room.gameSession ??= new RoomGame({ send: sendGamePacket, metrics });
     const entityId = room.gameSession.addPlayer(socket, player);
     if (room.log.backpressured) socket.pause();
     socket.codec ??= 'json';

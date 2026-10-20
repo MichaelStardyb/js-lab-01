@@ -18,6 +18,7 @@ const defaults = Object.freeze({
   MAX_BUFFERED_AMOUNT: 65536,
   JOIN_TIMEOUT_MS: 5000,
   HEARTBEAT_INTERVAL_MS: 15000,
+  ENABLE_METRICS: 0,
 });
 const hostnamePattern = /^(?=.{1,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\.(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?))*$/;
 
@@ -39,6 +40,7 @@ export const ConfigEnvSchema = z.object({
   MAX_BUFFERED_AMOUNT: z.coerce.number().int().min(1024).max(1024 * 1024 * 1024).default(defaults.MAX_BUFFERED_AMOUNT),
   JOIN_TIMEOUT_MS: z.coerce.number().int().min(100).max(10 * 60 * 1000).default(defaults.JOIN_TIMEOUT_MS),
   HEARTBEAT_INTERVAL_MS: z.coerce.number().int().min(1000).max(10 * 60 * 1000).default(defaults.HEARTBEAT_INTERVAL_MS),
+  ENABLE_METRICS: z.coerce.number().int().min(0).max(1).default(defaults.ENABLE_METRICS),
 });
 
 export function loadConfig(env: Record<string, string | undefined> = process.env) {
@@ -58,6 +60,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     maxBufferedAmount: parsed.MAX_BUFFERED_AMOUNT,
     joinTimeoutMs: parsed.JOIN_TIMEOUT_MS,
     heartbeatIntervalMs: parsed.HEARTBEAT_INTERVAL_MS,
+    enableMetrics: parsed.ENABLE_METRICS === 1,
   });
 }
 

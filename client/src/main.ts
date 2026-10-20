@@ -25,6 +25,25 @@ declare global {
         ships: Array<{ id: number; x: number; y: number; angle: number; hp: number }>;
       };
     };
+    __perf?: {
+      getMetrics: () => {
+        frameCount: number;
+        p50FrameMs: number;
+        p95FrameMs: number;
+        p99FrameMs: number;
+        maxFrameMs: number;
+        avgFrameMs: number;
+        framesOver16ms: number;
+        p50IntervalMs: number;
+        p95IntervalMs: number;
+        p99IntervalMs: number;
+        longTaskCount: number;
+        longAnimFrameCount: number;
+        jsHeapUsedSize: number;
+        jsHeapTotalSize: number;
+      };
+      reset: () => void;
+    };
   }
 }
 
@@ -45,6 +64,77 @@ const networkJitter = Math.max(0, Math.min(1000, Number(query.get('jitter') ?? 1
 const networkDrop = Math.max(0, Math.min(1, Number(query.get('drop') ?? 0.02) || 0));
 let dumbClient = query.get('dumb') === '1' || query.get('mode') === 'dumb';
 let nondeterministicExperiment = query.get('nondeterministic') === '1';
+const enablePerf = query.get('perf') === '1';
+const PERF_BUF_SIZE = 10000;
+const perfFrameDurations = new Float64Array(PERF_BUF_SIZE);
+const perfFrameIntervals = new Float64Array(PERF_BUF_SIZE);
+let perfIndex = 0;
+let perfCount = 0;
+let perfLongTaskCount = 0;
+let perfLongAnimCount = 0;
+
+if (enablePerf) {
+  try {
+    const obs = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        if (entry.entryType === 'longtask') perfLongTaskCount++;
+        else if (entry.entryType === 'long-animation-frame') perfLongAnimCount++;
+      }
+    });
+    const supported = PerformanceObserver.supportedEntryTypes ?? [];
+    const types = [];
+    if (supported.includes('longtask')) types.push('longtask');
+    if (supported.includes('long-animation-frame')) types.push('long-animation-frame');
+    if (types.length > 0) obs.observe({ entryTypes: types });
+  } catch {}
+
+  window.__perf = {
+    getMetrics: () => {
+      const valid = Math.min(perfCount, PERF_BUF_SIZE);
+      const durs = Array.from(perfFrameDurations.subarray(0, valid)).sort((a, b) => a - b);
+      const ints = Array.from(perfFrameIntervals.subarray(0, valid)).sort((a, b) => a - b);
+      const p50 = durs[Math.floor(durs.length * 0.5)] ?? 0;
+      const p95 = durs[Math.floor(durs.length * 0.95)] ?? 0;
+      const p99 = durs[Math.floor(durs.length * 0.99)] ?? 0;
+      const max = durs[durs.length - 1] ?? 0;
+      const sum = durs.reduce((acc, v) => acc + v, 0);
+      const avg = durs.length > 0 ? sum / durs.length : 0;
+      const over16 = durs.filter((d) => d > 16.67).length;
+      const mem = (performance as unknown as { memory?: { usedJSHeapSize?: number; totalJSHeapSize?: number } }).memory;
+      return {
+        frameCount: perfCount,
+        p50FrameMs: p50,
+        p95FrameMs: p95,
+        p99FrameMs: p99,
+        maxFrameMs: max,
+        avgFrameMs: avg,
+        framesOver16ms: over16,
+        p50IntervalMs: ints[Math.floor(ints.length * 0.5)] ?? 0,
+        p95IntervalMs: ints[Math.floor(ints.length * 0.95)] ?? 0,
+        p99IntervalMs: ints[Math.floor(ints.length * 0.99)] ?? 0,
+        longTaskCount: perfLongTaskCount,
+        longAnimFrameCount: perfLongAnimCount,
+        jsHeapUsedSize: mem?.usedJSHeapSize ?? 0,
+        jsHeapTotalSize: mem?.totalJSHeapSize ?? 0,
+      };
+    },
+    reset: () => {
+      perfIndex = 0;
+      perfCount = 0;
+      perfLongTaskCount = 0;
+      perfLongAnimCount = 0;
+    },
+  };
+}
+
+function recordFramePerf(workMs: number, intervalMs: number) {
+  if (!enablePerf) return;
+  perfFrameDurations[perfIndex] = workMs;
+  perfFrameIntervals[perfIndex] = intervalMs;
+  perfIndex = (perfIndex + 1) % PERF_BUF_SIZE;
+  perfCount++;
+}
+
 const input = createInput(window);
 import { gameBus } from './events.js';
 let ship = { x: 400, y: 300, vx: 0, vy: 0, angle: 0 };
@@ -545,7 +635,12 @@ function runGame() {
       connection.sendInput(nextInput);
     },
     render: (_alpha, stats) => {
+      const startWork = enablePerf ? performance.now() : 0;
       drawFrame(stats);
+      if (enablePerf) {
+        const workMs = performance.now() - startWork;
+        recordFramePerf(workMs, stats.frameMs);
+      }
     },
   });
   loop.start();
