@@ -769,27 +769,70 @@ function interpolatedEntities(renderTime: number): readonly (SnapshotEntity | Re
   return resultEntities;
 }
 
+const shipPath = new Path2D();
+shipPath.moveTo(15, 0);
+shipPath.lineTo(-10, 10);
+shipPath.lineTo(-10, -10);
+shipPath.closePath();
+
+const asteroidPath = new Path2D();
+const ASTEROID_POINTS = 8;
+const ASTEROID_BASE_RADIUS = 18;
+for (let i = 0; i < ASTEROID_POINTS; i++) {
+  const theta = (i / ASTEROID_POINTS) * Math.PI * 2;
+  const r = ASTEROID_BASE_RADIUS * (i % 2 === 0 ? 1 : 0.76);
+  const px = Math.cos(theta) * r;
+  const py = Math.sin(theta) * r;
+  if (i === 0) asteroidPath.moveTo(px, py);
+  else asteroidPath.lineTo(px, py);
+}
+asteroidPath.closePath();
+
+const shipColorCache: string[] = [];
+for (let i = 0; i < 360; i++) {
+  shipColorCache[i] = `hsl(${i} 75% 70%)`;
+}
+function getShipColor(id: number): string {
+  const hue = ((id * 67) % 360 + 360) % 360;
+  return shipColorCache[hue] ?? '#fff';
+}
+
 function drawFrame(stats: LoopStats) {
   ctx.fillStyle = '#111';
   ctx.fillRect(0, 0, 800, 600);
   const renderTime = performance.now() - interpolationDelay;
-  for (const entity of interpolatedEntities(renderTime)) {
-    if (entity.id === ownEntityId) continue;
+  const entities = interpolatedEntities(renderTime);
+  const entitiesLen = entities.length;
+
+  for (let i = 0; i < entitiesLen; i++) {
+    const entity = entities[i]!;
+    if (entity.id === ownEntityId || entity.kind === BULLET_KIND) continue;
     const color = entity.kind === SHIP_KIND
-      ? `hsl(${entity.id * 67 % 360} 75% 70%)`
+      ? getShipColor(entity.id)
       : entity.kind === ASTEROID_KIND
       ? '#b0bec5'
-      : entity.kind === PICKUP_KIND
-      ? '#4caf50'
-      : '#ffd54f';
+      : '#4caf50';
     drawEntity(entity, color);
   }
-  for (const bullet of predictedBullets) {
-    ctx.fillStyle = '#ffd54f';
-    ctx.beginPath();
-    ctx.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
-    ctx.fill();
+
+  // Batch-render all bullets (server and predicted) in a single draw call
+  ctx.fillStyle = '#ffd54f';
+  ctx.beginPath();
+  for (let i = 0; i < entitiesLen; i++) {
+    const entity = entities[i]!;
+    if (entity.kind === BULLET_KIND) {
+      ctx.moveTo(entity.x + 3, entity.y);
+      ctx.arc(entity.x, entity.y, 3, 0, Math.PI * 2);
+    }
   }
+  const predLen = predictedBullets.length;
+  for (let i = 0; i < predLen; i++) {
+    const bullet = predictedBullets[i]!;
+    ctx.moveTo(bullet.x + 3, bullet.y);
+    ctx.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
+  }
+  ctx.fill();
+
   if (initialized && ownEntityId !== null) {
     const displayed: RenderableEntity = {
       id: ownEntityId,
@@ -843,12 +886,7 @@ function drawEntity(
       ctx.rotate(entity.angle ?? 0);
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(15, 0);
-      ctx.lineTo(-10, 10);
-      ctx.lineTo(-10, -10);
-      ctx.closePath();
-      ctx.stroke();
+      ctx.stroke(shipPath);
 
       // Health bar above ship
       ctx.rotate(-(entity.angle ?? 0));
@@ -876,19 +914,7 @@ function drawEntity(
       ctx.rotate(entity.angle ?? 0);
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
-      ctx.beginPath();
-      const points = 8;
-      const baseRadius = 18;
-      for (let i = 0; i < points; i++) {
-        const theta = (i / points) * Math.PI * 2;
-        const r = baseRadius * (i % 2 === 0 ? 1 : 0.76);
-        const px = Math.cos(theta) * r;
-        const py = Math.sin(theta) * r;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-      ctx.stroke();
+      ctx.stroke(asteroidPath);
       break;
     }
     case PICKUP_KIND: {
@@ -911,8 +937,13 @@ function drawEntity(
 function drawNetgraph(stats: LoopStats) {
   const now = performance.now();
   while (traffic.length && (traffic[0]?.time ?? 0) < now - 1000) traffic.shift();
-  const bytesIn = traffic.filter((entry) => entry.direction === 'in').reduce((sum, entry) => sum + entry.bytes, 0);
-  const bytesOut = traffic.filter((entry) => entry.direction === 'out').reduce((sum, entry) => sum + entry.bytes, 0);
+  let bytesIn = 0;
+  let bytesOut = 0;
+  for (let i = 0; i < traffic.length; i++) {
+    const t = traffic[i]!;
+    if (t.direction === 'in') bytesIn += t.bytes;
+    else bytesOut += t.bytes;
+  }
   ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
   ctx.fillRect(10, 10, 260, 190);
   ctx.strokeStyle = '#52665d';
