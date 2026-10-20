@@ -1,4 +1,4 @@
-import type { Entity } from './entity.js';
+import { type Entity, Bullet, BulletPool } from './entity.js';
 
 export class World {
     #entities = new Map<number, Entity>();
@@ -39,6 +39,10 @@ export class World {
 
         // Видалення мертвих сутностей (відкладене)
         for (const id of this.#toDespawn) {
+            const e = this.#entities.get(id);
+            if (e instanceof Bullet) {
+                BulletPool.release(e);
+            }
             this.#entities.delete(id);
         }
         this.#toDespawn.clear();

@@ -2,6 +2,7 @@ import { createLoop, type LoopStats } from './loop.js';
 import { createInput } from './input.js';
 import { lerpAngle } from 'shared/sim/arena';
 import { integrate } from 'shared/sim/ship';
+import { ObjectPool } from 'shared/sim/pool.js';
 import { RoomConnection } from './connection.js';
 import { createLobby } from './lobby.js';
 import {
@@ -216,19 +217,43 @@ interface Particle {
 }
 
 const particles: Particle[] = [];
+const particlePool = new ObjectPool<Particle>(
+  () => ({ x: 0, y: 0, vx: 0, vy: 0, color: '', expiresAt: 0 }),
+  (p) => {
+    p.x = 0;
+    p.y = 0;
+    p.vx = 0;
+    p.vy = 0;
+    p.color = '';
+    p.expiresAt = 0;
+  },
+  128,
+);
+
+const predictedBulletPool = new ObjectPool<PredictedBullet>(
+  () => ({ seq: asSeq(0), x: 0, y: 0, angle: 0, expiresAt: 0 }),
+  (b) => {
+    b.seq = asSeq(0);
+    b.x = 0;
+    b.y = 0;
+    b.angle = 0;
+    b.expiresAt = 0;
+  },
+  32,
+);
 
 function spawnExplosion(x: number, y: number, color = '#ffa726') {
   for (let i = 0; i < 12; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = 40 + Math.random() * 120;
-    particles.push({
-      x,
-      y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      color,
-      expiresAt: performance.now() + 400 + Math.random() * 200,
-    });
+    const p = particlePool.acquire();
+    p.x = x;
+    p.y = y;
+    p.vx = Math.cos(angle) * speed;
+    p.vy = Math.sin(angle) * speed;
+    p.color = color;
+    p.expiresAt = performance.now() + 400 + Math.random() * 200;
+    particles.push(p);
   }
 }
 
@@ -422,7 +447,10 @@ const lobby = createLobby({
             initialized = false;
             pendingInputs = [];
             snapshots = [];
+            for (const b of predictedBullets) predictedBulletPool.release(b);
             predictedBullets = [];
+            for (const p of particles) particlePool.release(p);
+            particles.length = 0;
             seq = asSeq(0);
           }
           lobby.refreshRooms();
@@ -475,7 +503,10 @@ const lobby = createLobby({
     initialized = false;
     pendingInputs = [];
     snapshots = [];
+    for (const b of predictedBullets) predictedBulletPool.release(b);
     predictedBullets = [];
+    for (const p of particles) particlePool.release(p);
+    particles.length = 0;
     lobby.setJoined(false);
     lobby.setRoster([]);
     lobby.setStatus('Ви вийшли з кімнати');
@@ -539,14 +570,22 @@ function receiveSnapshot(snapshot: SnapshotMessage | { entities?: readonly Snaps
     }
   }
   const authoritativeBullets = entities.filter((entity: SnapshotEntity) => entity.kind === BULLET_KIND);
-  predictedBullets = predictedBullets.filter((bullet) => {
-    if (bullet.expiresAt <= receivedAt) return false;
+  for (let i = predictedBullets.length - 1; i >= 0; i--) {
+    const bullet = predictedBullets[i]!;
+    if (bullet.expiresAt <= receivedAt) {
+      predictedBulletPool.release(bullet);
+      predictedBullets.splice(i, 1);
+      continue;
+    }
     const matched = authoritativeBullets.some((serverBullet: SnapshotEntity) => (
       Math.hypot(shortestDelta(serverBullet.x, bullet.x, 800), shortestDelta(serverBullet.y, bullet.y, 600)) < 70
     ));
     const confirmed = !isSequenceAfter(bullet.seq, snapshot.lastProcessedSeq);
-    return !matched && !confirmed;
-  });
+    if (matched || confirmed) {
+      predictedBulletPool.release(bullet);
+      predictedBullets.splice(i, 1);
+    }
+  }
 }
 
 function shortestDelta(from: number, to: number, size: number) {
@@ -563,8 +602,14 @@ function runGame() {
     step: 1 / 30,
     simulate: (step) => {
       fireCooldown = Math.max(0, fireCooldown - step);
-      predictedBullets = predictedBullets.filter((bullet) => bullet.expiresAt > performance.now());
-      for (const bullet of predictedBullets) {
+      const now = performance.now();
+      for (let i = predictedBullets.length - 1; i >= 0; i--) {
+        const bullet = predictedBullets[i]!;
+        if (bullet.expiresAt <= now) {
+          predictedBulletPool.release(bullet);
+          predictedBullets.splice(i, 1);
+          continue;
+        }
         bullet.x = (bullet.x + Math.cos(bullet.angle) * 400 * step + 800) % 800;
         bullet.y = (bullet.y + Math.sin(bullet.angle) * 400 * step + 600) % 600;
       }
@@ -577,6 +622,7 @@ function runGame() {
             const dx = Math.abs(entity.x - bullet.x);
             const dy = Math.abs(entity.y - bullet.y);
             if (Math.min(dx, 800 - dx) ** 2 + Math.min(dy, 600 - dy) ** 2 < 21 ** 2) {
+              predictedBulletPool.release(bullet);
               predictedBullets.splice(i, 1);
               spawnExplosion(bullet.x, bullet.y, '#b0bec5');
               playAsteroidExplodeSound();
@@ -618,13 +664,13 @@ function runGame() {
             ship.vy += (Math.random() - 0.5) * 80;
           }
           if (nextInput.fire && fireCooldown === 0) {
-            predictedBullets.push({
-              seq: nextInput.seq,
-              x: ship.x + Math.cos(ship.angle) * 20,
-              y: ship.y + Math.sin(ship.angle) * 20,
-              angle: ship.angle,
-              expiresAt: performance.now() + 500,
-            });
+            const b = predictedBulletPool.acquire();
+            b.seq = nextInput.seq;
+            b.x = ship.x + Math.cos(ship.angle) * 20;
+            b.y = ship.y + Math.sin(ship.angle) * 20;
+            b.angle = ship.angle;
+            b.expiresAt = performance.now() + 500;
+            predictedBullets.push(b);
           }
         }
         if (nextInput.fire && fireCooldown === 0) {
@@ -723,6 +769,7 @@ function drawFrame(stats: LoopStats) {
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i]!;
     if (p.expiresAt <= now) {
+      particlePool.release(p);
       particles.splice(i, 1);
       continue;
     }

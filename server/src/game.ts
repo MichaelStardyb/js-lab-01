@@ -2,6 +2,7 @@ import type { MetricsCollector } from './metrics.js';
 import { DEFAULT_ARENA } from 'shared/sim/arena.js';
 import { integrate } from 'shared/sim/ship.js';
 import { mulberry32 } from 'shared/sim/prng.js';
+import { ObjectPool } from 'shared/sim/pool.js';
 import { createFixedTicker, type FixedTicker } from './loop.js';
 import {
   encodeSnapshot,
@@ -93,6 +94,29 @@ export class RoomGame {
   #send: (socket: GameSocket, value: unknown, options?: SendOptions) => void;
   #players = new Map<GameSocket, PlayerState>();
   #bullets = new Map<EntityId, BulletState>();
+  #bulletPool = new ObjectPool<BulletState>(
+    () => ({
+      id: asEntityId(0),
+      kind: BULLET_KIND,
+      owner: '',
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      angle: 0,
+      ttl: 0,
+    }),
+    (bullet) => {
+      bullet.owner = '';
+      bullet.x = 0;
+      bullet.y = 0;
+      bullet.vx = 0;
+      bullet.vy = 0;
+      bullet.angle = 0;
+      bullet.ttl = 0;
+    },
+    32,
+  );
   #asteroids = new Map<EntityId, AsteroidState>();
   #pickups = new Map<EntityId, PickupState>();
   #nextEntityId = 1;
@@ -175,12 +199,17 @@ export class RoomGame {
     return state.id;
   }
 
+  #despawnBullet(id: EntityId, bullet: BulletState): void {
+    this.#bullets.delete(id);
+    this.#bulletPool.release(bullet);
+  }
+
   removePlayer(socket: GameSocket): void {
     const state = this.#players.get(socket);
     if (!state) return;
     this.#players.delete(socket);
     for (const [id, bullet] of this.#bullets) {
-      if (bullet.owner === state.owner) this.#bullets.delete(id);
+      if (bullet.owner === state.owner) this.#despawnBullet(id, bullet);
     }
     if (this.#players.size === 0) this.#ticker.stop();
   }
@@ -188,6 +217,9 @@ export class RoomGame {
   close(): void {
     this.#ticker.stop();
     this.#players.clear();
+    for (const [id, bullet] of this.#bullets) {
+      this.#bulletPool.release(bullet);
+    }
     this.#bullets.clear();
     this.#asteroids.clear();
     this.#pickups.clear();
@@ -245,7 +277,7 @@ export class RoomGame {
       bullet.x = ((bullet.x % DEFAULT_ARENA.width) + DEFAULT_ARENA.width) % DEFAULT_ARENA.width;
       bullet.y = ((bullet.y % DEFAULT_ARENA.height) + DEFAULT_ARENA.height) % DEFAULT_ARENA.height;
       bullet.ttl -= dt;
-      if (bullet.ttl <= 0) this.#bullets.delete(id);
+      if (bullet.ttl <= 0) this.#despawnBullet(id, bullet);
       else {
         for (const target of this.#players.values()) {
           if (target.owner === bullet.owner) continue;
@@ -253,7 +285,7 @@ export class RoomGame {
           const dy = Math.abs(target.y - bullet.y);
           if (Math.min(dx, DEFAULT_ARENA.width - dx) ** 2 + Math.min(dy, DEFAULT_ARENA.height - dy) ** 2 < 18 ** 2) {
             target.hp = Math.max(0, target.hp - 25);
-            this.#bullets.delete(id);
+            this.#despawnBullet(id, bullet);
             if (target.hp <= 0) {
               target.hp = 100;
               target.x = this.#random() * DEFAULT_ARENA.width;
@@ -292,7 +324,7 @@ export class RoomGame {
         const dx = Math.abs(asteroid.x - bullet.x);
         const dy = Math.abs(asteroid.y - bullet.y);
         if (Math.min(dx, DEFAULT_ARENA.width - dx) ** 2 + Math.min(dy, DEFAULT_ARENA.height - dy) ** 2 < (asteroid.radius + 3) ** 2) {
-          this.#bullets.delete(id);
+          this.#despawnBullet(id, bullet);
           // Повідомляємо гравця, чия куля знищила астероїд
           for (const [playerSocket, playerState] of this.#players) {
             if (playerState.owner === bullet.owner) {
@@ -383,17 +415,17 @@ export class RoomGame {
     const id = this.#allocateId();
     const speedX = Math.cos(player.angle) * BULLET_SPEED + player.vx;
     const speedY = Math.sin(player.angle) * BULLET_SPEED + player.vy;
-    this.#bullets.set(id, {
-      id,
-      kind: BULLET_KIND,
-      owner: player.owner,
-      x: (player.x + Math.cos(player.angle) * 20) % DEFAULT_ARENA.width,
-      y: (player.y + Math.sin(player.angle) * 20) % DEFAULT_ARENA.height,
-      vx: speedX,
-      vy: speedY,
-      angle: player.angle,
-      ttl: 2,
-    });
+    const bullet = this.#bulletPool.acquire();
+    bullet.id = id;
+    bullet.kind = BULLET_KIND;
+    bullet.owner = player.owner;
+    bullet.x = (player.x + Math.cos(player.angle) * 20) % DEFAULT_ARENA.width;
+    bullet.y = (player.y + Math.sin(player.angle) * 20) % DEFAULT_ARENA.height;
+    bullet.vx = speedX;
+    bullet.vy = speedY;
+    bullet.angle = player.angle;
+    bullet.ttl = 2;
+    this.#bullets.set(id, bullet);
   }
 
   #snapshotEntities(): SnapshotEntity[] {

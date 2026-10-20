@@ -65,7 +65,7 @@ export class Ship extends Entity {
             const dir = Vector2.fromAngle(this.angle);
             const bulletPos = this.pos.add(dir.scale(20));
             const bulletVel = this.vel.add(dir.scale(400));
-            world.spawn(new Bullet(bulletPos, bulletVel));
+            world.spawn(BulletPool.acquire(bulletPos, bulletVel));
             gameBus.dispatchEvent(new CustomEvent('fired'));
             this.fireCooldown = 0.2;
         }
@@ -114,6 +114,34 @@ export class Bullet extends Entity {
             world.score += 10;
             world.spawn(new Explosion(other.pos));
         }
+    }
+}
+
+export class BulletPool {
+    static #pool: Bullet[] = [];
+    static acquire(pos: Vector2, vel: Vector2): Bullet {
+        const b = this.#pool.pop();
+        if (b) {
+            b.id = Entity.nextId++;
+            b.alive = true;
+            b.pos = pos;
+            b.vel = vel;
+            b.angle = 0;
+            b.radius = 3;
+            b.kind = 'bullet';
+            b.ttl = 2;
+            b.homingTarget = null;
+            return b;
+        }
+        return new Bullet(pos, vel);
+    }
+    static release(b: Bullet): void {
+        b.alive = false;
+        b.homingTarget = null;
+        this.#pool.push(b);
+    }
+    static clear(): void {
+        this.#pool.length = 0;
     }
 }
 
