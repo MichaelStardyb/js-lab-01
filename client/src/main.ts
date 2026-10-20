@@ -529,6 +529,18 @@ function schedulePing(roomConnection: RoomConnection) {
   }, Math.max(0, base));
 }
 
+function retainUnconfirmedInputs(seq: Seq): PendingInput[] {
+  let writeIdx = 0;
+  for (let i = 0; i < pendingInputs.length; i++) {
+    const item = pendingInputs[i]!;
+    if (isSequenceAfter(item.seq, seq)) {
+      pendingInputs[writeIdx++] = item;
+    }
+  }
+  pendingInputs.length = writeIdx;
+  return pendingInputs;
+}
+
 function receiveSnapshot(snapshot: SnapshotMessage | { entities?: readonly SnapshotEntity[]; lastProcessedSeq: Seq }) {
   const receivedAt = performance.now();
   lastSnapshotReceivedAt = receivedAt;
@@ -549,12 +561,12 @@ function receiveSnapshot(snapshot: SnapshotMessage | { entities?: readonly Snaps
     ownHp = newHp;
     if (!initialized || dumbClient) {
       ship = { x: ownShip.x, y: ownShip.y, vx: ownShip.vx, vy: ownShip.vy, angle: ownShip.angle };
-      pendingInputs = pendingInputs.filter((item) => isSequenceAfter(item.seq, snapshot.lastProcessedSeq));
+      retainUnconfirmedInputs(snapshot.lastProcessedSeq);
       visualOffset = { x: 0, y: 0 };
       initialized = true;
     } else {
       const prior = ship;
-      const remainingInputs = pendingInputs.filter((item) => isSequenceAfter(item.seq, snapshot.lastProcessedSeq));
+      const remainingInputs = retainUnconfirmedInputs(snapshot.lastProcessedSeq);
       let reconciled = { x: ownShip.x, y: ownShip.y, vx: ownShip.vx, vy: ownShip.vy, angle: ownShip.angle };
       for (const pending of remainingInputs) {
         reconciled = integrate(reconciled, pending, 1 / 30);
@@ -563,7 +575,6 @@ function receiveSnapshot(snapshot: SnapshotMessage | { entities?: readonly Snaps
           reconciled.vy += (Math.random() - 0.5) * 80;
         }
       }
-      pendingInputs = remainingInputs;
       const dx = shortestDelta(reconciled.x, prior.x, 800);
       const dy = shortestDelta(reconciled.y, prior.y, 600);
       visualOffset = { x: visualOffset.x + dx, y: visualOffset.y + dy };
@@ -571,7 +582,6 @@ function receiveSnapshot(snapshot: SnapshotMessage | { entities?: readonly Snaps
       ship = reconciled;
     }
   }
-  const authoritativeBullets = entities.filter((entity: SnapshotEntity) => entity.kind === BULLET_KIND);
   for (let i = predictedBullets.length - 1; i >= 0; i--) {
     const bullet = predictedBullets[i]!;
     if (bullet.expiresAt <= receivedAt) {
@@ -579,9 +589,16 @@ function receiveSnapshot(snapshot: SnapshotMessage | { entities?: readonly Snaps
       predictedBullets.splice(i, 1);
       continue;
     }
-    const matched = authoritativeBullets.some((serverBullet: SnapshotEntity) => (
-      Math.hypot(shortestDelta(serverBullet.x, bullet.x, 800), shortestDelta(serverBullet.y, bullet.y, 600)) < 70
-    ));
+    let matched = false;
+    for (let j = 0; j < entities.length; j++) {
+      const serverBullet = entities[j]!;
+      if (serverBullet.kind === BULLET_KIND) {
+        if (Math.hypot(shortestDelta(serverBullet.x, bullet.x, 800), shortestDelta(serverBullet.y, bullet.y, 600)) < 70) {
+          matched = true;
+          break;
+        }
+      }
+    }
     const confirmed = !isSequenceAfter(bullet.seq, snapshot.lastProcessedSeq);
     if (matched || confirmed) {
       predictedBulletPool.release(bullet);
@@ -694,6 +711,9 @@ function runGame() {
   loop.start();
 }
 
+const earlierEntitiesMap = new Map<EntityId, SnapshotEntity>();
+const resultEntities: (SnapshotEntity | RenderableEntity)[] = [];
+
 function interpolatedEntities(renderTime: number): readonly (SnapshotEntity | RenderableEntity)[] {
   if (snapshots.length === 0) return currentEntities;
   let before = snapshots[0]!;
@@ -708,33 +728,45 @@ function interpolatedEntities(renderTime: number): readonly (SnapshotEntity | Re
   }
   if (before === after || after.time <= before.time) return before.entities;
   const alpha = Math.max(0, Math.min(1, (renderTime - before.time) / (after.time - before.time)));
-  const earlier = new Map<EntityId, SnapshotEntity>(before.entities.map((entity: SnapshotEntity) => [entity.id, entity]));
-  const later = new Map<EntityId, SnapshotEntity>(after.entities.map((entity: SnapshotEntity) => [entity.id, entity]));
-  const ids = new Set<EntityId>([...earlier.keys(), ...later.keys()]);
-  const result: (SnapshotEntity | RenderableEntity)[] = [];
-  for (const id of ids) {
-    const from = earlier.get(id);
-    const to = later.get(id);
-    if (!from || !to) {
-      const visible = from ? alpha < 0.5 : alpha >= 0.5;
-      if (visible) {
-        const entity = from ?? to;
-        if (entity) result.push(entity);
-      }
-      continue;
-    }
-    result.push({
-      id: to.id,
-      kind: to.kind,
-      x: from.x + shortestDelta(from.x, to.x, 800) * alpha,
-      y: from.y + shortestDelta(from.y, to.y, 600) * alpha,
-      vx: to.vx,
-      vy: to.vy,
-      angle: lerpAngle(from.angle, to.angle, alpha),
-      hp: to.hp,
-    });
+
+  earlierEntitiesMap.clear();
+  const beforeLen = before.entities.length;
+  for (let i = 0; i < beforeLen; i++) {
+    const e = before.entities[i]!;
+    earlierEntitiesMap.set(e.id, e);
   }
-  return result;
+
+  resultEntities.length = 0;
+  const afterLen = after.entities.length;
+  for (let i = 0; i < afterLen; i++) {
+    const to = after.entities[i]!;
+    const from = earlierEntitiesMap.get(to.id);
+    if (from !== undefined) {
+      earlierEntitiesMap.delete(to.id);
+      resultEntities.push({
+        id: to.id,
+        kind: to.kind,
+        x: from.x + shortestDelta(from.x, to.x, 800) * alpha,
+        y: from.y + shortestDelta(from.y, to.y, 600) * alpha,
+        vx: to.vx,
+        vy: to.vy,
+        angle: lerpAngle(from.angle, to.angle, alpha),
+        hp: to.hp,
+      });
+    } else {
+      if (alpha >= 0.5) {
+        resultEntities.push(to);
+      }
+    }
+  }
+
+  if (alpha < 0.5) {
+    for (const from of earlierEntitiesMap.values()) {
+      resultEntities.push(from);
+    }
+  }
+
+  return resultEntities;
 }
 
 function drawFrame(stats: LoopStats) {
