@@ -387,22 +387,36 @@ export class RoomGame {
     }
 
     const entities = this.#snapshotEntities();
+    let cachedBinarySnapshot: ArrayBuffer | null = null;
+
     for (const [socket, player] of this.#players) {
-      const packet: {
-        type: 'snapshot';
-        tick: Tick;
-        lastProcessedSeq: Seq;
-        entities: readonly SnapshotEntity[];
-      } = {
-        type: 'snapshot',
-        tick: this.#tick,
-        lastProcessedSeq: player.lastProcessedSeq,
-        entities,
-      };
-      this.#send(socket, socket.codec === 'binary' ? encodeSnapshot(packet) : { v: 1, ...packet }, {
-        dropWhenBuffered: true,
-        simulated: true,
-      });
+      if (socket.codec === 'binary') {
+        if (!cachedBinarySnapshot) {
+          cachedBinarySnapshot = encodeSnapshot({
+            tick: this.#tick,
+            lastProcessedSeq: asSeq(0),
+            entities,
+          });
+        }
+        const clientBuffer = cachedBinarySnapshot.slice(0);
+        new DataView(clientBuffer).setUint32(6, player.lastProcessedSeq, true);
+        this.#send(socket, clientBuffer, {
+          dropWhenBuffered: true,
+          simulated: true,
+        });
+      } else {
+        const packet = {
+          v: 1,
+          type: 'snapshot' as const,
+          tick: this.#tick,
+          lastProcessedSeq: player.lastProcessedSeq,
+          entities,
+        };
+        this.#send(socket, packet, {
+          dropWhenBuffered: true,
+          simulated: true,
+        });
+      }
     }
     if (this.#metrics) {
       const stepDuration = performance.now() - stepStartTime;
