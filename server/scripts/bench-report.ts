@@ -90,14 +90,18 @@ export function generateReport(beforePath: string, afterPath: string): string {
 
 if (process.argv[1]?.includes('bench-report')) {
   const perfDir = resolve(process.cwd(), 'docs/perf');
-  const beforePath = join(perfDir, 'before.json');
-  const afterPath = join(perfDir, 'after.json');
+  const args = process.argv.slice(2).filter((a) => !a.startsWith('-'));
+  const beforeLabel = args[0] || 'before';
+  const afterLabel = args[1] || 'after';
+  const beforePath = join(perfDir, `${beforeLabel}.json`);
+  const afterPath = join(perfDir, `${afterLabel}.json`);
 
   try {
     const report = generateReport(beforePath, afterPath);
     console.log('\n' + report);
-    writeFileSync(join(perfDir, 'report.md'), report, 'utf8');
-    console.log('Saved report to docs/perf/report.md');
+    const outName = args.length >= 2 ? `report-${beforeLabel}-vs-${afterLabel}.md` : 'report.md';
+    writeFileSync(join(perfDir, outName), report, 'utf8');
+    console.log(`Saved report to docs/perf/${outName}`);
   } catch (err: unknown) {
     console.error('Failed to generate report:', err instanceof Error ? err.message : String(err));
   }

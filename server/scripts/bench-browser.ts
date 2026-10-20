@@ -43,8 +43,8 @@ function extractHotspots(node: HeapProfileNode, list: AllocationHotspot[] = []):
   return list;
 }
 
-export async function runBrowserBenchmark(label = 'before', durationSeconds = 30): Promise<Record<string, unknown>> {
-  console.log(`\n=== Running Browser Benchmark (label: "${label}", duration: ${durationSeconds}s) ===`);
+export async function runBrowserBenchmark(label = 'before', durationSeconds = 30, extraQuery = ''): Promise<Record<string, unknown>> {
+  console.log(`\n=== Running Browser Benchmark (label: "${label}", duration: ${durationSeconds}s, query: "${extraQuery}") ===`);
 
   const port = 3200 + Math.floor(Math.random() * 500);
   const host = '127.0.0.1';
@@ -102,7 +102,8 @@ export async function runBrowserBenchmark(label = 'before', durationSeconds = 30
   });
 
   // Navigate to client
-  await page.goto(`http://${host}:${port}/?perf=1&codec=binary&delay=0&jitter=0&drop=0`);
+  const fullUrl = `http://${host}:${port}/?perf=1&codec=binary&delay=0&jitter=0&drop=0${extraQuery ? `&${extraQuery}` : ''}`;
+  await page.goto(fullUrl);
 
   // Join room in lobby
   await page.locator('input[name="nickname"]').fill('BenchPlayer');
@@ -295,15 +296,19 @@ if (process.argv[1]?.includes('bench-browser')) {
   const nextRunsArg = args[runsIdx + 1];
   const runsCount = (runsIdx !== -1 && nextRunsArg) ? parseInt(nextRunsArg, 10) : 1;
 
+  const queryIdx = args.indexOf('--query');
+  const nextQueryArg = args[queryIdx + 1];
+  const query = (queryIdx !== -1 && nextQueryArg) ? nextQueryArg : '';
+
   async function execute() {
     if (runsCount === 1) {
-      await runBrowserBenchmark(label);
+      await runBrowserBenchmark(label, 30, query);
     } else {
       console.log(`Running ${runsCount} runs for median calculation...`);
       for (let r = 1; r <= runsCount; r++) {
-        await runBrowserBenchmark(`${label}-run${r}`);
+        await runBrowserBenchmark(`${label}-run${r}`, 30, query);
       }
-      await runBrowserBenchmark(label);
+      await runBrowserBenchmark(label, 30, query);
     }
   }
 

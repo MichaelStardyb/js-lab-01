@@ -49,6 +49,7 @@ export type InputPayload = {
 
 export class RoomConnection extends TypedEventTarget {
   #socket: WebSocket | null = null;
+  #worker: Worker | null = null;
   #queue: (string | ArrayBuffer | ArrayBufferView)[] = [];
   #retryTimer?: ReturnType<typeof setTimeout>;
   #stableTimer?: ReturnType<typeof setTimeout>;
@@ -62,7 +63,7 @@ export class RoomConnection extends TypedEventTarget {
     if (url === undefined) {
       const params = new URLSearchParams();
       const source = new URLSearchParams(location.search);
-      for (const key of ['codec', 'delay', 'latency', 'jitter', 'drop']) {
+      for (const key of ['codec', 'delay', 'latency', 'jitter', 'drop', 'worker']) {
         if (source.has(key)) params.set(key, source.get(key) || '');
       }
       const query = params.toString();
@@ -70,6 +71,25 @@ export class RoomConnection extends TypedEventTarget {
     }
     this.url = url;
     this.codec = new URL(url).searchParams.get('codec') ?? 'json';
+
+    const workerParam = typeof location !== 'undefined'
+      ? new URLSearchParams(location.search).get('worker')
+      : null;
+    if (workerParam === '1' && typeof Worker !== 'undefined') {
+      try {
+        this.#worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+        this.#worker.addEventListener('message', (event: MessageEvent<{ success: boolean; snapshot?: ServerMessage; error?: string }>) => {
+          if (event.data.success && event.data.snapshot) {
+            this.dispatchEvent(new CustomEvent('message', { detail: event.data.snapshot }));
+          } else {
+            this.dispatchEvent(new CustomEvent('error', { detail: new Error(event.data.error ?? 'Worker decode failed') }));
+          }
+        });
+      } catch {
+        this.#worker = null;
+      }
+    }
+
     this.#connect();
   }
 
@@ -122,6 +142,8 @@ export class RoomConnection extends TypedEventTarget {
     clearTimeout(this.#retryTimer);
     clearTimeout(this.#stableTimer);
     this.#queue.length = 0;
+    this.#worker?.terminate();
+    this.#worker = null;
     this.#socket?.close(1000, 'Client left');
   }
 
@@ -154,6 +176,10 @@ export class RoomConnection extends TypedEventTarget {
           ? data.byteLength
           : 0;
         this.#recordTraffic('in', byteLen);
+        if (data instanceof ArrayBuffer && this.#worker) {
+          this.#worker.postMessage({ buffer: data }, [data]);
+          return;
+        }
         const parsedData = data instanceof ArrayBuffer
           ? decodeSnapshot(data)
           : JSON.parse(data);
