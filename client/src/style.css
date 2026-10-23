@@ -1,24 +1,37 @@
-:root { color: #e8f5e9; background: #101414; font: 15px system-ui, sans-serif; }
+:root { color: #e8f5e9; background: #101414; font: 15px system-ui, -apple-system, sans-serif; font-variant-numeric: tabular-nums; }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 1rem; }
-.app { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 800px); gap: 1rem; align-items: start; max-width: 1200px; margin: auto; }
+.app { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 800px); gap: 1rem; align-items: start; max-width: 1220px; margin: auto; }
 #lobby { padding: 1rem; background: #1b2424; border: 1px solid #52665d; border-radius: 8px; }
+.lobby-header { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .75rem; }
+.brand-row { display: flex; align-items: baseline; gap: .5rem; }
+.brand-row h1 { margin: 0; font-size: 1.4rem; }
+.build-stamp { font-family: monospace; font-size: .78rem; color: #94d8a8; opacity: .9; }
+.btn-install { min-height: 2.2rem; padding: .35rem .75rem; font-size: .82rem; font-weight: 600; background: #1e3a2f; color: #a7ff83; border: 1px solid #52a373; border-radius: 6px; white-space: nowrap; }
+.btn-install:hover { background: #274d3e; }
+.offline-banner { padding: .45rem .65rem; margin-bottom: .75rem; background: #3b2814; color: #ffd54f; border: 1px solid #b27d2b; border-radius: 6px; font-size: .82rem; }
+.ios-modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .75); padding: 1rem; }
+.ios-modal[hidden] { display: none; }
+.ios-modal-card { max-width: 360px; width: 100%; background: #1b2424; border: 1px solid #52a373; border-radius: 10px; padding: 1.25rem; }
+.ios-modal-card h3 { margin: 0 0 .5rem; color: #a7ff83; }
+.ios-modal-card p { margin: 0 0 1rem; font-size: .9rem; line-height: 1.45; }
+.ios-modal-card button { width: 100%; background: #263333; color: #e8f5e9; border: 1px solid #52665d; border-radius: 6px; }
 h1, h2 { margin: 0 0 .75rem; }
-h2 { font-size: 1rem; }
+h2 { font-size: .95rem; }
 label { display: grid; gap: .25rem; margin-bottom: .65rem; }
 input, button { min-height: 2.3rem; padding: .4rem .6rem; font: inherit; }
 button { cursor: pointer; }
 .join-form, #chat-form { display: grid; gap: .5rem; }
 .join-form { grid-template-columns: 1fr 1fr; }
 .join-form label, .join-form button { min-width: 0; }
-#connection-status { color: #b4d8bd; min-height: 1.5rem; }
+#connection-status { color: #b4d8bd; min-height: 1.5rem; margin: .5rem 0; font-size: .9rem; }
 .lobby-columns { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 .lobby-columns ul { margin: 0; padding-left: 1.25rem; }
 #rooms li { cursor: pointer; }
 .chat { margin-top: 1rem; }
-#messages { height: 130px; overflow: auto; padding-left: 1.5rem; }
+#messages { height: 115px; overflow: auto; padding-left: 1.5rem; margin: .4rem 0; }
 #chat-form { grid-template-columns: 1fr auto; }
-#gameCanvas { width: 100%; height: auto; border: 1px solid #53645a; background: #111; }
+#gameCanvas { width: 100%; height: auto; border: 1px solid #53645a; background: #111; border-radius: 6px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .net-controls { border: 1px solid #52665d; border-radius: 6px; padding: .6rem; margin-bottom: .75rem; background: #151c1c; }
 .net-controls legend { font-size: .85rem; color: #a7ff83; padding: 0 .4rem; }
@@ -28,8 +41,14 @@ button { cursor: pointer; }
 .interp-row { display: flex; align-items: center; justify-content: space-between; gap: .4rem; margin-bottom: .5rem; font-size: .85rem; }
 .interp-row button { min-height: 1.8rem; padding: 0 .5rem; font-size: .8rem; }
 .interp-row strong { color: #a7ff83; min-width: 55px; text-align: center; }
-.net-presets { display: flex; flex-wrap: wrap; gap: .3rem; font-size: .75rem; }
+.net-presets { display: flex; flex-wrap: wrap; gap: .3rem; font-size: .75rem; margin-bottom: .5rem; }
 .preset-link { display: inline-block; padding: .2rem .5rem; background: #222d2d; color: #94d8a8; border: 1px solid #3c4f45; border-radius: 4px; text-decoration: none; }
 .preset-link:hover { background: #2e3e3e; color: #fff; border-color: #5bb27d; }
+.server-telemetry { display: flex; justify-content: space-between; gap: .5rem; padding-top: .4rem; border-top: 1px solid #2a3834; font-family: monospace; font-size: .76rem; color: #9ab8a6; }
+.server-telemetry strong { color: #a7ff83; }
+.touch-pad { margin-top: .9rem; padding-top: .75rem; border-top: 1px solid #2a3834; }
+.touch-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .45rem; }
+.touch-btn { min-height: 46px; min-width: 46px; padding: .4rem; font-size: .82rem; font-weight: 600; background: #222f2f; color: #e8f5e9; border: 1px solid #45574f; border-radius: 6px; user-select: none; touch-action: manipulation; }
+.touch-btn.pressed, .touch-btn:active { background: #1e3a2f; color: #a7ff83; border-color: #a7ff83; }
+.touch-fire { background: #3b2323; border-color: #7c4242; color: #ffd54f; }
 @media (max-width: 850px) { .app { grid-template-columns: 1fr; } #gameCanvas { max-width: 800px; } }
-

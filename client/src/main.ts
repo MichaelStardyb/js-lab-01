@@ -21,6 +21,14 @@ declare global {
   }
 }
 
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Service worker registration is optional in non-HTTPS test environments
+    });
+  });
+}
+
 const canvas = document.getElementById('gameCanvas');
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error('Canvas not found');
 const rawCtx = canvas.getContext('2d');
@@ -48,6 +56,8 @@ let playerName: string | undefined;
 let ownEntityId: EntityId | null = null;
 let initialized = false;
 let seq: Seq = asSeq(0);
+let serverShuttingDown = false;
+
 interface PendingInput {
   type: string;
   seq: Seq;
@@ -123,45 +133,56 @@ let fireCooldown = 0;
 let predictedBullets: PredictedBullet[] = [];
 const traffic: TrafficRecord[] = [];
 
-const AudioContextCls = window.AudioContext || window.webkitAudioContext || AudioContext;
-const audioCtx = new AudioContextCls();
+let audioCtx: AudioContext | null = null;
+function getAudio(): AudioContext | null {
+  if (!audioCtx) {
+    try {
+      const Cls = window.AudioContext || window.webkitAudioContext;
+      if (Cls) audioCtx = new Cls();
+    } catch {
+      return null;
+    }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    void audioCtx.resume();
+  }
+  return audioCtx;
+}
 
 function playShootSound() {
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  
+  const ctx = getAudio();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
   osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  
+  gain.connect(ctx.destination);
+
   osc.type = 'square';
-  osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(110, audioCtx.currentTime + 0.1);
-  
-  gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
-  
-  osc.start(audioCtx.currentTime);
-  osc.stop(audioCtx.currentTime + 0.1);
+  osc.frequency.setValueAtTime(880, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.1);
+
+  gain.gain.setValueAtTime(0.05, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.1);
 }
 
 function playHurtSound() {
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
+  const ctx = getAudio();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
   osc.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(ctx.destination);
   osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(180, audioCtx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.15);
-  gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
-  osc.start(audioCtx.currentTime);
-  osc.stop(audioCtx.currentTime + 0.15);
+  osc.frequency.setValueAtTime(180, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.15);
+  gain.gain.setValueAtTime(0.08, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.15);
 }
 
 let lastAsteroidSound = 0;
@@ -171,16 +192,15 @@ function playPickupSound() {
   const nowMs = performance.now();
   if (nowMs - lastPickupSound < 150) return;
   lastPickupSound = nowMs;
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-  const now = audioCtx.currentTime;
+  const ctx = getAudio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
   const notes = [523.25, 659.25, 783.99, 1046.5];
   notes.forEach((freq, idx) => {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
     osc.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(ctx.destination);
     osc.type = 'sine';
     osc.frequency.setValueAtTime(freq, now + idx * 0.04);
     gain.gain.setValueAtTime(0.06, now + idx * 0.04);
@@ -194,14 +214,13 @@ function playAsteroidExplodeSound() {
   const nowMs = performance.now();
   if (nowMs - lastAsteroidSound < 150) return;
   lastAsteroidSound = nowMs;
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-  const now = audioCtx.currentTime;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
+  const ctx = getAudio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
   osc.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(ctx.destination);
   osc.type = 'sawtooth';
   osc.frequency.setValueAtTime(140, now);
   osc.frequency.exponentialRampToValueAtTime(32, now + 0.28);
@@ -212,7 +231,6 @@ function playAsteroidExplodeSound() {
 }
 
 gameBus.addEventListener('fired', () => {
-  console.log('Піу-піу!');
   playShootSound();
 });
 
@@ -258,9 +276,13 @@ const lobby = createLobby({
     interpolationDelay = Math.max(0, Math.min(500, interpolationDelay + delta));
     syncControlsUI();
   },
+  onTouchControl: (code, active) => {
+    input.setKey(code, active);
+  },
   onJoin: ({ room, name }) => {
     activeRoom = room;
     playerName = name;
+    serverShuttingDown = false;
     lobby.setRoster([]);
     lobby.setJoined(true);
     lobby.setStatus('Підключення до кімнати...');
@@ -269,16 +291,28 @@ const lobby = createLobby({
     connection = roomConnection;
     roomConnection.addEventListener('open', () => {
       if (connection !== roomConnection) return;
+      serverShuttingDown = false;
       roomConnection.send({ type: 'join', room: activeRoom, name: playerName });
+      lobby.setJoined(true);
       lobby.setStatus(`Підключено до ${activeRoom}`);
       schedulePing(roomConnection);
     });
-    roomConnection.addEventListener('close', () => {
+    roomConnection.addEventListener('close', (ev) => {
       if (connection === roomConnection && activeRoom) {
         ownEntityId = null;
         initialized = false;
         pendingInputs = [];
-        lobby.setStatus('З’єднання втрачено. Спроба перепідключення...');
+        snapshots = [];
+        currentEntities = [];
+        predictedBullets = [];
+        lobby.setRoster([]);
+        lobby.setJoined(false);
+        const code = ev.detail?.code ?? 1006;
+        if (serverShuttingDown || code === 1001) {
+          lobby.setStatus('Сервер перезапускається (1001) — повернуто в лобі. Перепідключення...');
+        } else {
+          lobby.setStatus('З’єднання втрачено — повернуто в лобі. Автоматичне перепідключення...');
+        }
       }
     });
     roomConnection.addEventListener('error', (event) => {
@@ -296,6 +330,7 @@ const lobby = createLobby({
         case 'joined': {
           lobby.setRoster(detail.players ?? detail.roster ?? []);
           if (detail.type === 'joined') {
+            lobby.setJoined(true);
             lobby.setStatus(`У кімнаті ${activeRoom}`);
             ownEntityId = detail.entityId;
             initialized = false;
@@ -304,7 +339,7 @@ const lobby = createLobby({
             predictedBullets = [];
             seq = asSeq(0);
           }
-          lobby.refreshRooms();
+          void lobby.refreshRooms();
           break;
         }
         case 'snapshot': {
@@ -327,6 +362,19 @@ const lobby = createLobby({
           } else if (detail.event?.type === 'pickup') {
             gameBus.dispatchEvent(new Event('pickup'));
           }
+          break;
+        }
+        case 'shutdown': {
+          serverShuttingDown = true;
+          ownEntityId = null;
+          initialized = false;
+          pendingInputs = [];
+          snapshots = [];
+          currentEntities = [];
+          predictedBullets = [];
+          lobby.setRoster([]);
+          lobby.setJoined(false);
+          lobby.setStatus('Сервер завершує роботу (SIGTERM) — повернуто в лобі. Очікування перезапуску...');
           break;
         }
         case 'error': {
@@ -354,11 +402,12 @@ const lobby = createLobby({
     initialized = false;
     pendingInputs = [];
     snapshots = [];
+    currentEntities = [];
     predictedBullets = [];
     lobby.setJoined(false);
     lobby.setRoster([]);
     lobby.setStatus('Ви вийшли з кімнати');
-    lobby.refreshRooms();
+    void lobby.refreshRooms();
   },
   onChat: (text) => connection?.send({ type: 'chat', text }),
 });
@@ -437,7 +486,10 @@ function isSequenceAfter(sequence: number, previous: number) {
   return delta !== 0 && delta < 0x80000000;
 }
 
+let gameLoopStarted = false;
 function runGame() {
+  if (gameLoopStarted) return;
+  gameLoopStarted = true;
   const loop = createLoop({
     step: 1 / 30,
     simulate: (step) => {
@@ -448,7 +500,6 @@ function runGame() {
         bullet.y = (bullet.y + Math.sin(bullet.angle) * 400 * step + 600) % 600;
       }
 
-      // Перевірка попадання власної кулі в астероїд для негайного звуку вибуху
       for (let i = predictedBullets.length - 1; i >= 0; i--) {
         const bullet = predictedBullets[i]!;
         for (const entity of currentEntities) {
@@ -465,7 +516,6 @@ function runGame() {
         }
       }
 
-      // Перевірка підбору аптечки для негайного звуку підняття
       if (initialized && !dumbClient) {
         for (const entity of currentEntities) {
           if (entity.kind === PICKUP_KIND) {
@@ -559,9 +609,24 @@ function interpolatedEntities(renderTime: number): readonly (SnapshotEntity | Re
   return result;
 }
 
+const backgroundStars = Array.from({ length: 70 }, (_, i) => ({
+  x: (i * 137.5) % 800,
+  y: (i * 269.3) % 600,
+  size: i % 4 === 0 ? 2 : 1,
+  alpha: 0.2 + (i % 5) * 0.12,
+}));
+
 function drawFrame(stats: LoopStats) {
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = '#0f1414';
   ctx.fillRect(0, 0, 800, 600);
+
+  ctx.fillStyle = '#ffffff';
+  for (const star of backgroundStars) {
+    ctx.globalAlpha = star.alpha;
+    ctx.fillRect(star.x, star.y, star.size, star.size);
+  }
+  ctx.globalAlpha = 1.0;
+
   const renderTime = performance.now() - interpolationDelay;
   for (const entity of interpolatedEntities(renderTime)) {
     if (entity.id === ownEntityId) continue;
@@ -592,7 +657,6 @@ function drawFrame(stats: LoopStats) {
     drawEntity(displayed, '#fff');
   }
 
-  // Draw particles
   const now = performance.now();
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i]!;
@@ -610,6 +674,30 @@ function drawFrame(stats: LoopStats) {
 
   visualOffset.x *= Math.exp(-stats.frameMs / 100);
   visualOffset.y *= Math.exp(-stats.frameMs / 100);
+
+  if (!initialized || ownEntityId === null) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(16, 24, 24, 0.88)';
+    ctx.fillRect(160, 220, 480, 150);
+    ctx.strokeStyle = '#52a373';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(160, 220, 480, 150);
+
+    ctx.fillStyle = '#a7ff83';
+    ctx.font = 'bold 16px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('СЕКТОР БОЮ: СИМУЛЯТОР ГОТОВИЙ', 400, 258);
+
+    ctx.fillStyle = '#e8f5e9';
+    ctx.font = '13px system-ui, sans-serif';
+    ctx.fillText('Вкажіть нікнейм і натисніть «Увійти / створити» для вильоту', 400, 292);
+
+    ctx.fillStyle = '#94d8a8';
+    ctx.font = '12px monospace';
+    ctx.fillText('Керування: W/▲ (тяга), A/◀, D/▶ (поворот), Пробіл (вогонь)', 400, 328);
+    ctx.restore();
+  }
+
   drawNetgraph(stats);
 }
 
@@ -637,7 +725,6 @@ function drawEntity(
       ctx.closePath();
       ctx.stroke();
 
-      // Health bar above ship
       ctx.rotate(-(entity.angle ?? 0));
       const currentHp = Math.max(0, Math.min(100, entity.hp ?? 100));
       const barW = 32;
@@ -701,9 +788,9 @@ function drawNetgraph(stats: LoopStats) {
   const bytesIn = traffic.filter((entry) => entry.direction === 'in').reduce((sum, entry) => sum + entry.bytes, 0);
   const bytesOut = traffic.filter((entry) => entry.direction === 'out').reduce((sum, entry) => sum + entry.bytes, 0);
   ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
-  ctx.fillRect(10, 10, 260, 190);
+  ctx.fillRect(10, 10, 275, 208);
   ctx.strokeStyle = '#52665d';
-  ctx.strokeRect(10, 10, 260, 190);
+  ctx.strokeRect(10, 10, 275, 208);
   ctx.fillStyle = '#a7ff83';
   ctx.font = '12px monospace';
   const modeText = dumbClient ? 'DUMB (NO PREDICT)' : 'PREDICTION';
@@ -719,8 +806,10 @@ function drawNetgraph(stats: LoopStats) {
     `Correction: ${correctionMagnitude.toFixed(2)} px`,
     `Interp delay: ${interpolationDelay} ms (keys: [ / ])`,
     `${modeText}${noiseText} | ${connection?.codec ?? 'offline'} | ${stats.fps} FPS`,
+    `Build SHA: ${lobby.getGitSha()} | WSS Ready`,
   ];
   lines.forEach((line, index) => ctx.fillText(line, 18, 29 + index * 20));
 }
 
 syncControlsUI();
+runGame();

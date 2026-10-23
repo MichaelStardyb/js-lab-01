@@ -4,15 +4,48 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./sim/ship": "./sim/ship.ts",
-    "./sim/ship.js": "./sim/ship.ts",
-    "./sim/arena": "./sim/arena.ts",
-    "./sim/arena.js": "./sim/arena.ts",
-    "./sim/prng": "./sim/prng.ts",
-    "./sim/prng.js": "./sim/prng.ts",
-    "./protocol/binaryCodec": "./protocol/binaryCodec.ts",
-    "./protocol/binaryCodec.js": "./protocol/binaryCodec.ts",
-    "./protocol/schema": "./protocol/schema.ts",
-    "./protocol/schema.js": "./protocol/schema.ts"
+    "./sim/ship": {
+      "types": "./dist/sim/ship.d.ts",
+      "default": "./dist/sim/ship.js"
+    },
+    "./sim/ship.js": {
+      "types": "./dist/sim/ship.d.ts",
+      "default": "./dist/sim/ship.js"
+    },
+    "./sim/arena": {
+      "types": "./dist/sim/arena.d.ts",
+      "default": "./dist/sim/arena.js"
+    },
+    "./sim/arena.js": {
+      "types": "./dist/sim/arena.d.ts",
+      "default": "./dist/sim/arena.js"
+    },
+    "./sim/prng": {
+      "types": "./dist/sim/prng.d.ts",
+      "default": "./dist/sim/prng.js"
+    },
+    "./sim/prng.js": {
+      "types": "./dist/sim/prng.d.ts",
+      "default": "./dist/sim/prng.js"
+    },
+    "./protocol/binaryCodec": {
+      "types": "./dist/protocol/binaryCodec.d.ts",
+      "default": "./dist/protocol/binaryCodec.js"
+    },
+    "./protocol/binaryCodec.js": {
+      "types": "./dist/protocol/binaryCodec.d.ts",
+      "default": "./dist/protocol/binaryCodec.js"
+    },
+    "./protocol/schema": {
+      "types": "./dist/protocol/schema.d.ts",
+      "default": "./dist/protocol/schema.js"
+    },
+    "./protocol/schema.js": {
+      "types": "./dist/protocol/schema.d.ts",
+      "default": "./dist/protocol/schema.js"
+    }
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
   }
 }

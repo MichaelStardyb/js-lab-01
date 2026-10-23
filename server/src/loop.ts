@@ -1,10 +1,11 @@
 const TICK_RATE = 30;
 const STEP_MS = 1000 / TICK_RATE;
+const SAMPLE_WINDOW = 300;
 
 export type TickerStats = {
   ticks: number;
   stepMs: number;
-  durationMs: { last: number; avg: number; max: number };
+  durationMs: { last: number; avg: number; max: number; p99: number };
   jitterMs: { last: number; avg: number; max: number };
 };
 
@@ -22,9 +23,17 @@ function isTimeout(t: unknown): t is NodeJS.Timeout {
   return typeof t === 'object' && t !== null && 'hasRef' in t;
 }
 
+function computePercentile(samples: number[], count: number, percentile: number): number {
+  if (count === 0) return 0;
+  const active = samples.slice(0, count).sort((a, b) => a - b);
+  const index = Math.min(active.length - 1, Math.max(0, Math.ceil((percentile / 100) * active.length) - 1));
+  return active[index] ?? 0;
+}
+
 export function createFixedTicker({
   stepMs = STEP_MS,
   tick,
+  onTick,
   now = () => performance.now(),
   schedule = (callback: () => void, delay: number) => setTimeout(callback, delay),
   cancel = (timer: unknown) => {
@@ -34,6 +43,7 @@ export function createFixedTicker({
 }: {
   stepMs?: number;
   tick: (dt: number) => void;
+  onTick?: (durationMs: number, jitterMs: number) => void;
   now?: () => number;
   schedule?: (callback: () => void, delay: number) => unknown;
   cancel?: (timer: unknown) => void;
@@ -49,6 +59,9 @@ export function createFixedTicker({
   let lastJitterMs = 0;
   let totalJitterMs = 0;
   let maxJitterMs = 0;
+  const durationSamples = new Array<number>(SAMPLE_WINDOW).fill(0);
+  let sampleCursor = 0;
+  let sampleCount = 0;
 
   function run() {
     if (!running) return;
@@ -64,7 +77,11 @@ export function createFixedTicker({
     lastDurationMs = duration;
     totalDurationMs += duration;
     if (duration > maxDurationMs) maxDurationMs = duration;
+    durationSamples[sampleCursor] = duration;
+    sampleCursor = (sampleCursor + 1) % SAMPLE_WINDOW;
+    if (sampleCount < SAMPLE_WINDOW) sampleCount += 1;
     tickCount += 1;
+    onTick?.(duration, jitter);
 
     nextTick += stepMs;
     const completedAt = now();
@@ -86,6 +103,7 @@ export function createFixedTicker({
       if (timer !== undefined) cancel(timer);
     },
     getStats(): TickerStats {
+      const p99 = computePercentile(durationSamples, sampleCount, 99);
       return {
         ticks: tickCount,
         stepMs,
@@ -93,6 +111,7 @@ export function createFixedTicker({
           last: Number(lastDurationMs.toFixed(3)),
           avg: tickCount > 0 ? Number((totalDurationMs / tickCount).toFixed(3)) : 0,
           max: Number(maxDurationMs.toFixed(3)),
+          p99: Number(p99.toFixed(3)),
         },
         jitterMs: {
           last: Number(lastJitterMs.toFixed(3)),

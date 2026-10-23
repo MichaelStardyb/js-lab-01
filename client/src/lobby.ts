@@ -1,23 +1,53 @@
-export function createLobby({ onJoin, onLeave, onChat, onTogglePrediction, onToggleNoise, onChangeInterp }: {
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
+
+export function createLobby({
+  onJoin,
+  onLeave,
+  onChat,
+  onTogglePrediction,
+  onToggleNoise,
+  onChangeInterp,
+  onTouchControl,
+}: {
   onJoin: (info: { name: string; room: string }) => void;
   onLeave: () => void;
   onChat: (text: string) => void;
   onTogglePrediction?: () => void;
   onToggleNoise?: () => void;
   onChangeInterp?: (delta: number) => void;
+  onTouchControl?: (code: string, active: boolean) => void;
 }) {
   const root = document.querySelector<HTMLDivElement>('#lobby')!;
   root.innerHTML = `
-    <h1>Dogfight</h1>
+    <div class="lobby-header">
+      <div class="brand-row">
+        <h1>Dogfight</h1>
+        <span id="build-sha" class="build-stamp" title="Git SHA збірки">SHA: ...</span>
+      </div>
+      <button type="button" id="pwa-install-btn" class="btn-install" hidden>Встановити додаток</button>
+    </div>
+    <div id="offline-banner" class="offline-banner" hidden role="alert">
+      Офлайн-режим — мережа недоступна, працює кеш оболонки PWA
+    </div>
+    <div id="ios-install-modal" class="ios-modal" hidden role="dialog" aria-labelledby="ios-modal-title">
+      <div class="ios-modal-card">
+        <h3 id="ios-modal-title">Встановлення на iPhone / iPad</h3>
+        <p>1. Натисніть кнопку <strong>Поділитися (Share)</strong> у панелі Safari.<br/>2. Оберіть <strong>На Початковий екран (Add to Home Screen)</strong>.</p>
+        <button type="button" id="ios-modal-close">Закрити</button>
+      </div>
+    </div>
     <form id="join-form" class="join-form">
       <label>Нікнейм<input name="nickname" maxlength="24" required value="Pilot" /></label>
-      <label>Кімната<input name="room" maxlength="32" required placeholder="Назва кімнати" /></label>
+      <label>Кімната<input name="room" maxlength="32" required placeholder="Назва кімнати" value="arena-1" /></label>
       <button type="submit">Увійти / створити</button>
       <button type="button" id="leave" disabled>Вийти</button>
     </form>
     <p id="connection-status" role="status">Не підключено</p>
     <fieldset class="net-controls">
-      <legend>Мережа (Lab 5)</legend>
+      <legend>Мережа та Спостережуваність</legend>
       <div class="net-buttons">
         <button type="button" id="btn-prediction" class="btn-toggle active" title="Клавіша P">Передбачення: УВІМК (P)</button>
         <button type="button" id="btn-noise" class="btn-toggle" title="Клавіша N">Шум: ВИМК (N)</button>
@@ -33,6 +63,14 @@ export function createLobby({ onJoin, onLeave, onChat, onTogglePrediction, onTog
         <a href="?codec=json&delay=100&jitter=15&drop=0.02" class="preset-link">JSON</a>
         <a href="?codec=binary&delay=100&dumb=1" class="preset-link">Dumb</a>
         <a href="?codec=binary&delay=100&nondeterministic=1" class="preset-link">Шум</a>
+        <a href="/health" target="_blank" rel="noopener" class="preset-link">/health</a>
+        <a href="/ready" target="_blank" rel="noopener" class="preset-link">/ready</a>
+        <a href="/metrics" target="_blank" rel="noopener" class="preset-link">/metrics</a>
+      </div>
+      <div id="server-telemetry" class="server-telemetry">
+        <span>Статус: <strong id="srv-ready">перевірка...</strong></span>
+        <span>Тік p99: <strong id="srv-p99">0.00 мс</strong></span>
+        <span>ELU: <strong id="srv-elu">0.0%</strong></span>
       </div>
     </fieldset>
     <div class="lobby-columns">
@@ -44,6 +82,15 @@ export function createLobby({ onJoin, onLeave, onChat, onTogglePrediction, onTog
       <ol id="messages" aria-live="polite"></ol>
       <form id="chat-form"><label class="visually-hidden" for="chat-input">Повідомлення</label><input id="chat-input" maxlength="500" autocomplete="off" placeholder="Напишіть повідомлення" /><button type="submit">Надіслати</button></form>
     </section>
+    <section class="touch-pad" aria-label="Мобільне керування кораблем">
+      <h2>Керування (Клавіатура W/A/D/Space або Сенсор)</h2>
+      <div class="touch-grid">
+        <button type="button" class="touch-btn" data-key="ArrowLeft">◀ Вліво</button>
+        <button type="button" class="touch-btn" data-key="ArrowUp">▲ Тяга</button>
+        <button type="button" class="touch-btn" data-key="ArrowRight">▶ Вправо</button>
+        <button type="button" class="touch-btn touch-fire" data-key="Space">● Вогонь</button>
+      </div>
+    </section>
   `;
 
   const form = root.querySelector<HTMLFormElement>('#join-form')!;
@@ -52,6 +99,83 @@ export function createLobby({ onJoin, onLeave, onChat, onTogglePrediction, onTog
   const messages = root.querySelector<HTMLOListElement>('#messages')!;
   const status = root.querySelector<HTMLParagraphElement>('#connection-status')!;
   const leaveButton = root.querySelector<HTMLButtonElement>('#leave')!;
+  const buildShaEl = root.querySelector<HTMLSpanElement>('#build-sha')!;
+  const srvReadyEl = root.querySelector<HTMLSpanElement>('#srv-ready')!;
+  const srvP99El = root.querySelector<HTMLSpanElement>('#srv-p99')!;
+  const srvEluEl = root.querySelector<HTMLSpanElement>('#srv-elu')!;
+  const installBtn = root.querySelector<HTMLButtonElement>('#pwa-install-btn')!;
+  const iosModal = root.querySelector<HTMLDivElement>('#ios-install-modal')!;
+  const iosModalClose = root.querySelector<HTMLButtonElement>('#ios-modal-close')!;
+  const offlineBanner = root.querySelector<HTMLDivElement>('#offline-banner')!;
+
+  // PWA Install handling
+  let deferredPrompt: BeforeInstallPromptEvent | null = null;
+  const isStandalone =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+  const isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+
+  if (!isStandalone && isIOS) {
+    installBtn.hidden = false;
+    installBtn.textContent = 'Встановити на iOS';
+  }
+
+  window.addEventListener('beforeinstallprompt', (e: Event) => {
+    e.preventDefault();
+    if (isStandalone) return;
+    deferredPrompt = e as BeforeInstallPromptEvent;
+    installBtn.hidden = false;
+    installBtn.textContent = 'Встановити гру';
+  });
+
+  window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    installBtn.hidden = true;
+  });
+
+  installBtn.addEventListener('click', () => {
+    if (deferredPrompt) {
+      void deferredPrompt.prompt().then(() => {
+        deferredPrompt = null;
+        installBtn.hidden = true;
+      });
+    } else if (isIOS) {
+      iosModal.hidden = false;
+    }
+  });
+
+  iosModalClose.addEventListener('click', () => {
+    iosModal.hidden = true;
+  });
+
+  // Online / Offline connectivity indicator
+  function syncOnlineState() {
+    offlineBanner.hidden = navigator.onLine;
+  }
+  window.addEventListener('online', syncOnlineState);
+  window.addEventListener('offline', syncOnlineState);
+  syncOnlineState();
+
+  // Touch buttons for mobile PWA playability
+  const touchButtons = root.querySelectorAll<HTMLButtonElement>('.touch-btn');
+  touchButtons.forEach((btn) => {
+    const keyCode = btn.dataset.key;
+    if (!keyCode) return;
+    const activate = (ev: Event) => {
+      ev.preventDefault();
+      btn.classList.add('pressed');
+      onTouchControl?.(keyCode, true);
+    };
+    const deactivate = (ev: Event) => {
+      ev.preventDefault();
+      btn.classList.remove('pressed');
+      onTouchControl?.(keyCode, false);
+    };
+    btn.addEventListener('pointerdown', activate);
+    btn.addEventListener('pointerup', deactivate);
+    btn.addEventListener('pointercancel', deactivate);
+    btn.addEventListener('pointerleave', deactivate);
+  });
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -61,61 +185,75 @@ export function createLobby({ onJoin, onLeave, onChat, onTogglePrediction, onTog
       room: String(data.get('room')).trim(),
     });
   });
-  leaveButton.addEventListener('click', onLeave);
-  const chatForm = root.querySelector('#chat-form');
-  if (chatForm) {
-    chatForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const input = root.querySelector<HTMLInputElement>('#chat-input');
-      if (input) {
-        const text = input.value.trim();
-        if (text) {
-          onChat(text);
-          input.value = '';
-        }
-      }
-    });
-  }
+
+  leaveButton.addEventListener('click', () => onLeave());
+
+  root.querySelector<HTMLFormElement>('#chat-form')!.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const input = root.querySelector<HTMLInputElement>('#chat-input')!;
+    const text = input.value.trim();
+    if (!text) return;
+    onChat(text);
+    input.value = '';
+  });
+
+  let latestGitSha = 'local';
 
   async function refreshRooms() {
     try {
-      const response = await fetch('/api/rooms');
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      const entries = Array.isArray(data) ? data : data.rooms;
-      rooms.replaceChildren();
-      for (const room of entries ?? []) {
+      const [roomsRes, statsRes] = await Promise.all([
+        fetch('/api/rooms'),
+        fetch('/api/stats'),
+      ]);
+      if (!roomsRes.ok) throw new Error(`HTTP ${roomsRes.status}`);
+      const list = await roomsRes.json();
+      rooms.replaceChildren(...list.map((room: { id?: string; name?: string; players?: number; playerCount?: number }) => {
         const item = document.createElement('li');
-        item.textContent = `${room.name ?? room.id} (${room.players ?? room.playerCount ?? 0})`;
+        const id = room.id ?? room.name ?? '';
+        const count = room.players ?? room.playerCount ?? 0;
+        item.textContent = `${id} (${count})`;
         item.addEventListener('click', () => {
-          const roomInput = form.elements.namedItem('room');
-          if (roomInput instanceof HTMLInputElement) {
-            roomInput.value = room.id ?? room.name;
-          }
+          form.elements.namedItem('room') && ((form.elements.namedItem('room') as HTMLInputElement).value = id);
         });
-        rooms.append(item);
+        return item;
+      }));
+      if (statsRes.ok) {
+        const stats = await statsRes.json();
+        if (typeof stats.gitSha === 'string' && stats.gitSha) {
+          latestGitSha = stats.gitSha;
+          buildShaEl.textContent = `SHA: ${stats.gitSha}`;
+        }
+        srvReadyEl.textContent = 'ONLINE';
+        const p99 = stats.durationMs?.p99 ?? stats.durationMs?.max ?? 0;
+        srvP99El.textContent = `${Number(p99).toFixed(2)} мс`;
+        const elu = (Number(stats.eventLoopUtilization ?? 0) * 100).toFixed(1);
+        srvEluEl.textContent = `${elu}%`;
       }
-    } catch (error: unknown) {
-      setStatus(`Не вдалося завантажити кімнати: ${error instanceof Error ? error.message : String(error)}`);
+    } catch {
+      srvReadyEl.textContent = 'OFFLINE';
+      if (leaveButton.disabled && status.textContent === 'Не підключено') {
+        status.textContent = 'Очікування зв’язку з сервером...';
+      }
     }
   }
 
-  function setStatus(value: string) {
-    status.textContent = value;
+  function setStatus(text: string) {
+    status.textContent = text;
   }
 
   function setRoster(players: Array<string | { name: string }>) {
-    roster.replaceChildren();
-    for (const player of players ?? []) {
+    roster.replaceChildren(...players.map((player) => {
       const item = document.createElement('li');
       item.textContent = typeof player === 'string' ? player : player.name;
-      roster.append(item);
-    }
+      return item;
+    }));
   }
 
   function addMessage(author: string, text: string) {
     const item = document.createElement('li');
-    item.textContent = `${author}: ${text}`;
+    const strong = document.createElement('strong');
+    strong.textContent = `${author}: `;
+    item.append(strong, document.createTextNode(text));
     messages.append(item);
     messages.scrollTop = messages.scrollHeight;
   }
@@ -149,7 +287,11 @@ export function createLobby({ onJoin, onLeave, onChat, onTogglePrediction, onTog
     }
   }
 
-  refreshRooms();
+  function getGitSha(): string {
+    return latestGitSha;
+  }
+
+  void refreshRooms();
   setInterval(() => void refreshRooms(), 5000);
-  return { setStatus, setRoster, addMessage, setJoined, refreshRooms, updateControls };
+  return { setStatus, setRoster, addMessage, setJoined, refreshRooms, updateControls, getGitSha };
 }

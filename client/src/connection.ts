@@ -8,6 +8,7 @@ export type ServerMessage =
   | { type: 'pong'; time: number }
   | { type: 'chat'; name?: string; from?: string; text: string }
   | { type: 'event'; event: { type: 'chat' | 'asteroid_destroyed' | 'pickup'; name?: string; text?: string } }
+  | { type: 'shutdown'; message?: string }
   | { type: 'error'; message: string };
 
 type RoomConnectionEventMap = {
@@ -15,7 +16,7 @@ type RoomConnectionEventMap = {
   roster: CustomEvent<unknown>;
   joined: CustomEvent<{ entityId: EntityId }>;
   open: CustomEvent<void>;
-  close: CustomEvent<void>;
+  close: CustomEvent<{ code: number; reason: string }>;
   traffic: CustomEvent<{ direction: string; bytes: number; time: number }>;
 };
 
@@ -23,17 +24,17 @@ class TypedEventTarget extends EventTarget {
   addEventListener<K extends keyof RoomConnectionEventMap>(
     type: K,
     listener: (this: TypedEventTarget, ev: RoomConnectionEventMap[K]) => void,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ): void;
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ): void;
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | AddEventListenerOptions
+    options?: boolean | AddEventListenerOptions,
   ): void {
     super.addEventListener(type, listener, options);
   }
@@ -81,7 +82,7 @@ export class RoomConnection extends TypedEventTarget {
       : JSON.stringify(
           typeof message === 'object' && message !== null && 'v' in message && typeof message['v'] === 'number'
             ? message
-            : { v: 0, ...message }
+            : { v: 0, ...message },
         );
     if (this.#socket?.readyState === WebSocket.OPEN) {
       this.#socket.send(payload);
@@ -168,9 +169,9 @@ export class RoomConnection extends TypedEventTarget {
     socket.addEventListener('error', () => {
       this.dispatchEvent(new CustomEvent('error', { detail: new Error('WebSocket connection error') }));
     });
-    socket.addEventListener('close', () => {
+    socket.addEventListener('close', (ev: CloseEvent) => {
       clearTimeout(this.#stableTimer);
-      this.dispatchEvent(new Event('close'));
+      this.dispatchEvent(new CustomEvent('close', { detail: { code: ev.code, reason: ev.reason } }));
       if (this.#closed) return;
       const base = Math.min(1000 * 2 ** this.#attempt, 30000);
       const delay = base * (0.75 + Math.random() * 0.5);

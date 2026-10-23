@@ -1,0 +1,8 @@
+{
+  "name": "Dogfight",
+  "description": "Real-time multiplayer space combat game with authoritative simulation, client prediction, and WebSocket netcode.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

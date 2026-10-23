@@ -83,6 +83,7 @@ export function parseClientMessage(raw: unknown): { value: ClientMessage } | { e
   if (parsed.success) {
     return { value: parsed.data };
   } else {
-    return { error: parsed.error.errors[0]?.message ?? 'Invalid message', closeCode: 1008 };
+    const firstIssue = parsed.error.issues?.[0];
+    return { error: firstIssue?.message ?? 'Invalid message', closeCode: 1008 };
   }
 }

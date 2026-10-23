@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+**/dist
+**/tsconfig.tsbuildinfo
+logs
+*.ndjson
+.git
+.github
+.env
+.env.*
+!.env.example
+.DS_Store
+docs
+coverage
+.aistudio
+public/assets/aistudio

@@ -9,20 +9,27 @@
     "shared"
   ],
   "scripts": {
+    "dev": "npm run build && npm --workspace=server run dev",
     "dev:client": "npm --workspace=client run dev",
-    "dev:server": "npm --workspace=server run dev",
-    "start": "npm --workspace=server run start",
-    "build": "npm --workspace=client run build",
+    "dev:server": "tsc -b shared && npm --workspace=server run dev",
+    "start": "node server/dist/index.js",
+    "build": "tsc -b shared server && npm --workspace=client run build",
+    "pretest": "tsc -b shared",
     "test": "node --import tsx --test shared/test/*.test.ts server/test/*.test.ts",
     "lint": "tsx server/scripts/check-syntax.ts",
-    "bench:netcode": "tsx server/scripts/bench-netcode.ts",
+    "bench:netcode": "tsc -b shared && tsx server/scripts/bench-netcode.ts",
+    "bench:chaos": "tsc -b shared && tsx server/scripts/bench-chaos.ts",
     "typecheck": "tsc -b"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.10",
     "tsx": "^4.7.0",
-    "typescript": "^5.5.0",
-    "zod": "^3.23.0"
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "pino": "^10.4.0",
+    "prom-client": "^15.1.3",
+    "zod": "^4.6.7"
   }
 }

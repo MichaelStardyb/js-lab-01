@@ -6,8 +6,11 @@ import { dirname, extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import { pipeline } from 'node:stream/promises';
+import type { Logger } from 'pino';
 import { loadConfig } from './config.js';
+import { createLogger, flushLogger } from './logger.js';
 import { handleReplayRequest } from './log/replay.js';
+import { ServerMetrics } from './metrics.js';
 import { RoomManager } from './rooms.js';
 import { validateRoomId } from './protocol.js';
 import { attachWebSocketServer } from './ws.js';
@@ -20,6 +23,7 @@ const contentTypes = new Map([
   ['.ico', 'image/x-icon'],
   ['.js', 'text/javascript; charset=utf-8'],
   ['.json', 'application/json; charset=utf-8'],
+  ['.webmanifest', 'application/manifest+json; charset=utf-8'],
   ['.mp3', 'audio/mpeg'],
   ['.png', 'image/png'],
   ['.svg', 'image/svg+xml'],
@@ -67,7 +71,21 @@ function readJsonBody(request: IncomingMessage, maxBytes: number): Promise<unkno
   });
 }
 
-export function createHttpHandler({ config, roomManager, staticDir }: { config: ReturnType<typeof loadConfig>, roomManager: RoomManager, staticDir: string | null }) {
+export function createHttpHandler({
+  config,
+  roomManager,
+  staticDir,
+  metrics,
+  logger,
+  isShuttingDown = () => false,
+}: {
+  config: ReturnType<typeof loadConfig>;
+  roomManager: RoomManager;
+  staticDir: string | null;
+  metrics: ServerMetrics;
+  logger: Logger;
+  isShuttingDown?: () => boolean;
+}) {
   return async function handleRequest(request: IncomingMessage, response: ServerResponse) {
     const rawPath = (request.url ?? '').split('?', 1)[0];
     let decodedRawPath: string;
@@ -96,7 +114,76 @@ export function createHttpHandler({ config, roomManager, staticDir }: { config: 
         respondJson(response, 405, { error: 'Method not allowed' });
         return;
       }
-      respondJson(response, 200, { status: 'ok', uptime: process.uptime() });
+      respondJson(response, 200, {
+        status: 'ok',
+        version: '1.0.0',
+        gitSha: config.gitSha,
+        uptime: process.uptime(),
+        eventLoopUtilization: metrics.sampleEventLoopUtilization(),
+      });
+      return;
+    }
+
+    if (url.pathname === '/ready') {
+      if (request.method !== 'GET') {
+        response.setHeader('allow', 'GET');
+        respondJson(response, 405, { error: 'Method not allowed' });
+        return;
+      }
+      if (isShuttingDown()) {
+        respondJson(response, 503, {
+          status: 'not_ready',
+          reason: 'shutting_down',
+          gitSha: config.gitSha,
+        });
+        return;
+      }
+      if (roomManager.rooms.size >= config.maxRooms) {
+        respondJson(response, 503, {
+          status: 'not_ready',
+          reason: 'room_limit_reached',
+          rooms: roomManager.rooms.size,
+          maxRooms: config.maxRooms,
+          gitSha: config.gitSha,
+        });
+        return;
+      }
+      respondJson(response, 200, {
+        status: 'ready',
+        version: '1.0.0',
+        gitSha: config.gitSha,
+        rooms: roomManager.rooms.size,
+        maxRooms: config.maxRooms,
+      });
+      return;
+    }
+
+    if (url.pathname === '/metrics') {
+      if (request.method !== 'GET') {
+        response.setHeader('allow', 'GET');
+        respondJson(response, 405, { error: 'Method not allowed' });
+        return;
+      }
+      const wantsJson =
+        url.searchParams.get('format') === 'json' ||
+        (request.headers.accept ?? '').includes('application/json');
+      if (wantsJson) {
+        respondJson(response, 200, {
+          version: '1.0.0',
+          gitSha: config.gitSha,
+          ...metrics.getSnapshot(),
+        });
+        return;
+      }
+      const text = await metrics.toPrometheusText();
+      if (!response.headersSent && !response.destroyed) {
+        response.writeHead(200, {
+          'content-type': metrics.registry.contentType,
+          'content-length': Buffer.byteLength(text),
+          'cache-control': 'no-store',
+        });
+        response.end(text);
+      }
       return;
     }
 
@@ -112,6 +199,10 @@ export function createHttpHandler({ config, roomManager, staticDir }: { config: 
         return;
       }
       if (request.method === 'POST') {
+        if (isShuttingDown()) {
+          respondJson(response, 503, { error: 'Server is shutting down' });
+          return;
+        }
         try {
           const body = await readJsonBody(request, 1024);
           const name = body && typeof body === 'object' && 'name' in body && typeof body.name === 'string' ? body.name.trim() : '';
@@ -123,8 +214,13 @@ export function createHttpHandler({ config, roomManager, staticDir }: { config: 
           const existed = roomManager.rooms.has(id);
           const room = await roomManager.getOrCreate(id);
           if (!room) {
+            metrics.recordRejection('room_limit');
+            logger.warn({ event: 'room.rejected', reason: 'room_limit', roomId: id }, 'Room creation rejected: room limit');
             respondJson(response, 503, { error: 'The server is at its room limit' });
             return;
+          }
+          if (!existed) {
+            logger.info({ event: 'room.created', roomId: room.id }, 'Room created via HTTP API');
           }
           respondJson(response, existed ? 200 : 201, {
             id: room.id,
@@ -155,44 +251,23 @@ export function createHttpHandler({ config, roomManager, staticDir }: { config: 
         respondJson(response, 405, { error: 'Method not allowed' });
         return;
       }
-      let totalTicks = 0;
-      let maxDuration = 0;
-      let maxJitter = 0;
-      let totalAvgDuration = 0;
-      let totalAvgJitter = 0;
-      let activeSessions = 0;
-      let totalPlayers = 0;
-
-      for (const room of roomManager.rooms.values()) {
-        totalPlayers += room.players.size;
-        const session = room.gameSession;
-        if (session) {
-          activeSessions += 1;
-          const s = session.getStats();
-          totalTicks += s.ticks;
-          maxDuration = Math.max(maxDuration, s.durationMs.max);
-          maxJitter = Math.max(maxJitter, s.jitterMs.max);
-          totalAvgDuration += s.durationMs.avg;
-          totalAvgJitter += s.jitterMs.avg;
-        }
-      }
-
+      const snap = metrics.getSnapshot();
       respondJson(response, 200, {
         tickRate: 30,
         stepMs: 1000 / 30,
-        rooms: roomManager.rooms.size,
-        activeSessions,
-        players: totalPlayers,
-        ticks: totalTicks,
-        durationMs: {
-          avg: activeSessions > 0 ? Number((totalAvgDuration / activeSessions).toFixed(3)) : 0,
-          max: Number(maxDuration.toFixed(3)),
-        },
-        jitterMs: {
-          avg: activeSessions > 0 ? Number((totalAvgJitter / activeSessions).toFixed(3)) : 0,
-          max: Number(maxJitter.toFixed(3)),
-        },
-        uptime: process.uptime(),
+        version: '1.0.0',
+        gitSha: config.gitSha,
+        rooms: snap.rooms,
+        activeSessions: snap.activeSessions,
+        players: snap.players,
+        ticks: snap.ticks,
+        durationMs: snap.tickDurationMs,
+        jitterMs: snap.jitterMs,
+        messagesPerSec: snap.messagesPerSec,
+        bytesPerSec: snap.bytesPerSec,
+        eventLoopUtilization: snap.eventLoopUtilization,
+        rejections: snap.rejections,
+        uptime: snap.uptime,
         memory: process.memoryUsage(),
       });
       return;
@@ -221,7 +296,7 @@ export function createHttpHandler({ config, roomManager, staticDir }: { config: 
     try {
       if (await handleReplayRequest(request, response, { logDir: config.logDir })) return;
     } catch (error: unknown) {
-      console.error('Replay request failed:', error);
+      logger.error({ event: 'replay.error', err: error }, 'Replay request failed');
       respondJson(response, 500, { error: 'Replay request failed' });
       return;
     }
@@ -274,9 +349,28 @@ export function createHttpHandler({ config, roomManager, staticDir }: { config: 
         ? error.code
         : undefined;
       if (code === 'ENOENT') {
+        if (!extname(requestedPath)) {
+          const indexPath = resolve(staticDir, 'index.html');
+          try {
+            const indexStat = await stat(indexPath);
+            response.writeHead(200, {
+              'content-type': 'text/html; charset=utf-8',
+              'content-length': indexStat.size,
+              'x-content-type-options': 'nosniff',
+            });
+            if (request.method === 'HEAD') {
+              response.end();
+              return;
+            }
+            await pipeline(createReadStream(indexPath), response);
+            return;
+          } catch {
+            // Fall through to 404 if index.html is missing
+          }
+        }
         respondJson(response, 404, { error: 'Not found' });
       } else if (!response.destroyed) {
-        console.error('Static file request failed:', error);
+        logger.error({ event: 'static.error', err: error }, 'Static file request failed');
         if (response.headersSent) response.destroy(error instanceof Error ? error : undefined);
         else respondJson(response, 500, { error: 'Unable to serve file' });
       }
@@ -284,17 +378,40 @@ export function createHttpHandler({ config, roomManager, staticDir }: { config: 
   };
 }
 
-export function createGameServer({ config = loadConfig(), staticDir = defaultStaticDirectory }: { config?: ReturnType<typeof loadConfig>, staticDir?: string | null } = {}) {
+export function createGameServer({
+  config = loadConfig(),
+  staticDir = defaultStaticDirectory,
+  logger = createLogger({ level: config.logLevel, gitSha: config.gitSha }),
+}: {
+  config?: ReturnType<typeof loadConfig>;
+  staticDir?: string | null;
+  logger?: Logger;
+} = {}) {
   if (!config || typeof config !== 'object') throw new TypeError('config must be an object');
   staticDir = staticDir === null ? null : resolve(staticDir);
+  let shuttingDown = false;
+  let closingPromise: Promise<void> | null = null;
+
+  const isShuttingDown = () => shuttingDown;
   const roomManager = new RoomManager({ maxRooms: config.maxRooms, logDir: config.logDir });
-  const httpServer = http.createServer(createHttpHandler({ config, roomManager, staticDir }));
-  const wsRuntime = attachWebSocketServer(httpServer, { config, roomManager });
+  const metrics = new ServerMetrics({ roomManager });
+  const httpServer = http.createServer(
+    createHttpHandler({ config, roomManager, staticDir, metrics, logger, isShuttingDown }),
+  );
+  const wsRuntime = attachWebSocketServer(httpServer, {
+    config,
+    roomManager,
+    logger,
+    metrics,
+    isShuttingDown,
+  });
 
   httpServer.on('clientError', (_error, socket) => {
     if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
   });
-  httpServer.on('error', (error) => console.error('HTTP server error:', error));
+  httpServer.on('error', (error) => {
+    logger.error({ event: 'http.server_error', err: error }, 'HTTP server error');
+  });
 
   async function listen(port = config.port, host = config.host) {
     await mkdir(config.logDir, { recursive: true });
@@ -311,17 +428,37 @@ export function createGameServer({ config = loadConfig(), staticDir = defaultSta
       httpServer.once('listening', onListening);
       httpServer.listen(port, host);
     });
-    return httpServer.address();
+    const addr = httpServer.address();
+    logger.info(
+      {
+        event: 'server.started',
+        port: typeof addr === 'object' && addr ? addr.port : port,
+        host,
+        gitSha: config.gitSha,
+        nodeEnv: config.nodeEnv,
+      },
+      'Dogfight server listening',
+    );
+    return addr;
   }
 
   async function close() {
-    const httpClose = httpServer.listening
-      ? new Promise<void>((resolveClose, rejectClose) => {
-        httpServer.close((error) => error ? rejectClose(error) : resolveClose());
-      })
-      : Promise.resolve();
-    await wsRuntime.close();
-    await httpClose;
+    if (closingPromise) return closingPromise;
+    shuttingDown = true;
+    closingPromise = (async () => {
+      logger.info({ event: 'server.shutdown_initiated' }, 'Initiating graceful shutdown');
+      const httpClose = httpServer.listening
+        ? new Promise<void>((resolveClose, rejectClose) => {
+            httpServer.close((error) => (error ? rejectClose(error) : resolveClose()));
+            httpServer.closeIdleConnections?.();
+          })
+        : Promise.resolve();
+      await wsRuntime.close();
+      await httpClose;
+      logger.info({ event: 'server.shutdown_complete' }, 'Graceful shutdown complete');
+      await flushLogger(logger);
+    })();
+    return closingPromise;
   }
 
   return Object.freeze({
@@ -329,7 +466,10 @@ export function createGameServer({ config = loadConfig(), staticDir = defaultSta
     httpServer,
     webSocketServer: wsRuntime.webSocketServer,
     rooms: roomManager.rooms,
+    metrics,
+    logger,
     config,
+    isShuttingDown,
     listen,
     close,
   });

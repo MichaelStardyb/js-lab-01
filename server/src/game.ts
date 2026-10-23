@@ -101,17 +101,19 @@ export class RoomGame {
 
   constructor({
     send,
+    onTick,
     now = () => performance.now(),
     randomSeed = 0xD06F19,
   }: {
     send: (socket: GameSocket, value: unknown, options?: SendOptions) => void;
+    onTick?: (durationMs: number, jitterMs: number) => void;
     now?: () => number;
     randomSeed?: number;
   } = { send: () => {} }) {
     this.#send = send;
     this.#random = mulberry32(randomSeed);
     this.#initWorldEntities();
-    this.#ticker = createFixedTicker({ tick: (dt) => this.#step(dt), now });
+    this.#ticker = createFixedTicker({ tick: (dt) => this.#step(dt), onTick, now });
   }
 
   #initWorldEntities(): void {
